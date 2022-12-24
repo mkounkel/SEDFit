@@ -8,7 +8,7 @@ from specutils.manipulation import SplineInterpolatedResampler,FluxConservingRes
 from dust_extinction.averages import GCC09_MWAvg,G21_MWAvg
 from dust_extinction.parameter_averages import F99
 from scipy.optimize import curve_fit
-from scipy.signal import savgol_filter
+from scipy.interpolate import RegularGridInterpolator
 from astroquery.gaia import Gaia
 
 import dustmaps
@@ -313,9 +313,9 @@ class SEDFit:
                     flux.append(f[j])
                     t.add_row((teff[j],logg[j],feh[j],alpha[j]))
             pickle.dump( [flux,t,la], open(grid_pickle, "wb" ) )
+            
+        self.interp=self.makeinterp(t,flux)
         self.la=la
-        self.t=t
-        self.flux=flux
         return
     def load_sed(self,grid_type,i,laname):
         if grid_type=='coelho':
@@ -330,18 +330,28 @@ class SEDFit:
             return self.load_phoenix_sed(i,laname)
         else:
             raise Exception("Unsupported grid type, available options are 'coelho', 'kurucz', and 'phoenix'")
-        
-        
-    def getclosestpars(self,teff,logg,feh,alpha):
-        q=np.abs(self.t['alpha']-alpha)
-        a=np.where(q==np.min(q))[0]
-        z=np.abs(self.t['feh'][a]-feh)
-        a=a[np.where(z==np.min(z))[0]]
-        x=np.abs(self.t['teff'][a]-teff)
-        a=a[np.where(x==np.min(x))[0]]
-        y=np.abs(self.t['logg'][a]-logg)
-        a=a[np.argmin(y)]
-        return a
+
+    def makeinterp(self,t,flux):
+        teff=np.unique(np.array(t['teff']))
+        logg=np.unique(np.array(t['logg']))
+        feh=np.unique(np.array(t['feh']))
+        alpha=np.unique(np.array(t['alpha']))
+        data=np.zeros((len(teff),len(logg),len(feh),len(alpha),len(flux[0])))
+        for d in range(len(alpha)):
+            q1=np.abs(t['alpha']-alpha[d])
+            w1=np.where(q1==np.min(q1))[0]
+            for c in range(len(feh)):
+                q2=np.abs(t['feh'][w1]-feh[c])
+                w2=w1[np.where(q2==np.min(q2))[0]]
+                for b in range(len(teff)):
+                    q3=np.abs(t['teff'][w2]-teff[b])
+                    w3=w2[np.where(q3==np.min(q3))[0]]
+                    for a in range(len(logg)):
+                        q4=np.abs(t['logg'][w3]-logg[a])
+                        w4=w3[np.argmin(q4)]
+                        data[b,a,c,d,:]=flux[w4]
+        interp = RegularGridInterpolator((teff,logg,feh,alpha), data)
+        return interp
         
     
     def addguesses(self,dist=None,av=None,r=None,teff=None,logg=None,feh=None,alpha=None,area=False):
@@ -373,10 +383,10 @@ class SEDFit:
         self.alpha=alpha
         
         
-        self.index=[]
+        self.flux=[]
         for i in range(len(self.r)):
-            self.index.append(self.getclosestpars(self.teff[i],self.logg[i],self.feh,self.alpha))
-        self.f,self.fx,self.mags,self.spec=self.getfluxsystem(self.dist,self.av,self.r,area=area)
+            self.flux.append(self.interp((self.teff[i],self.logg[i],self.feh,self.alpha)))
+        self.f,self.fx,self.mags,self.spec=self.getfluxsystem(self.dist,self.av,self.r)
         self.addrange()
         return
     
@@ -423,17 +433,23 @@ class SEDFit:
         self.boundupper=boundupper
         return
         
-    def getfluxsystem(self,dist,av,r,area=False):
+    def getfluxsystem(self,dist,av,r):
         redden=self.la.value*0.
         redden[self.refuv] = self.extuv.extinguish(self.la[self.refuv], Av=av)
         redden[self.refir] = self.extir.extinguish(self.la[self.refir], Av=av)
         
         fx=[]
         for x in range(self.nstar):
-            if area:
-                fx.append(((10**(self.flux[self.index[x]])*(r[x]*(u.Rsun.to(u.cm))**2))/(4*np.pi*((dist*u.pc).to(u.cm))**2)*redden).value)
+            if type(r[x]) in [list,tuple,np.ndarray]:
+                if len(r[x])==len(self.flux[x]):
+                    fxx=[]
+                    for xx in range(len(r[x])):
+                        fxx.append(((10**(self.flux[x][xx])*(r[x][xx]*(u.Rsun.to(u.cm))**2))/(4*np.pi*((dist*u.pc).to(u.cm))**2)*redden).value)
+                    fx.append(np.sum(fxx,axis=0))
+                else:
+                    raise Exception('Number of facets areas has to equal the number of temperatures')
             else:
-                fx.append(((10**(self.flux[self.index[x]])*((r[x]*u.Rsun).to(u.cm))**2)/(((dist*u.pc).to(u.cm))**2)*redden).value)
+                fx.append(((10**(self.flux[x])*((r[x]*u.Rsun).to(u.cm))**2)/(((dist*u.pc).to(u.cm))**2)*redden).value)
         f=np.sum(fx,axis=0)
         mags=self.fluxtomag(f)
         if len(self.gaia)>0:
@@ -470,72 +486,20 @@ class SEDFit:
         match=np.interp(self.gaia['la'], self.la,f)
         return match
     
-    def funcsingle(self,f,dist,av,r1):
-        f,fx,m,s=self.getfluxsystem(dist,av,[r1])
+    def func(self,f,dist,av,*argv):
+        r=[]
+        j=0
+        for i in range(self.nstar):
+            if self.fitstar[i]>0:
+                r.append(argv[j])
+                j=j+1
+            else:
+                r.append(self.r[i])
+        f,fx,m,s=self.getfluxsystem(dist,av,r)
         m=m[self.use_mag]
         if self.use_gaia: return np.append(m,s)
         else: return m
-    def fitsingle(self):
-        p0 = self.dist,self.av,self.r[0]
-        pars=curve_fit(self.funcsingle, self.f, flux, p0,
-                       sigma=eflux,absolute_sigma=True,
-                       bounds=(self.boundlower,self.boundupper))
-        self.addguesses(dist=pars[0][0],av=pars[0][1],
-                        r=[pars[0][2]])
-        #print(pars[0])
-        return pars
-
-    def funcbinary_r(self,f,dist,av,r1,r2):
-        f,fx,m,s=self.getfluxsystem(dist,av,[r1,r1-r2])
-        m=m[self.use_mag]
-        if self.use_gaia: return np.append(m,s)
-        else: return m
-    def fitbinary_r(self,flux,eflux):
-        p0 = self.dist,self.av,self.r[0],self.r[0]-self.r[1]
-        
-        lower=self.boundlower
-        upper=self.boundupper
-        lower[3]=np.max([0,self.r[0]-self.boundupper[3]])
-        upper[3]=self.r[0]-self.boundlower[3]
-        
-        pars=curve_fit(self.funcbinary_r, self.f, flux, p0,
-                       sigma=eflux,absolute_sigma=True,
-                       bounds=(lower,upper))
-        self.addguesses(dist=pars[0][0],av=pars[0][1],
-                        r=[pars[0][2],pars[0][2]-pars[0][3]])
-        return pars
-    
-    def funcbinary(self,f,dist,av,r1,r2):
-        f,fx,m,s=self.getfluxsystem(dist,av,[r1,r2])
-        m=m[self.use_mag]
-        if self.use_gaia: return np.append(m,s)
-        else: return m
-    def fitbinary(self,flux,eflux):
-        p0 = self.dist,self.av,self.r[0],self.r[1]
-        
-        pars=curve_fit(self.funcbinary, self.f, flux, p0,
-                       sigma=eflux,absolute_sigma=True,
-                       bounds=(self.boundlower,self.boundupper))
-        self.addguesses(dist=pars[0][0],av=pars[0][1],
-                        r=[pars[0][2],pars[0][3]])
-        return pars
-    
-    def functriple(self,f,dist,av,r1,r2,r3):
-        f,fx,m,s=self.getfluxsystem(dist,av,[r1,r2,r3])
-        m=m[self.use_mag]
-        if self.use_gaia: return np.append(m,s)
-        else: return m
-    def fittriple(self,flux,eflux):
-        p0 = self.dist,self.av,self.r[0],self.r[1],self.r[2]
-        
-        pars=curve_fit(self.functriple, self.f, flux, p0,
-                       sigma=eflux,absolute_sigma=True,
-                       bounds=(self.boundlower,self.boundupper))
-        self.addguesses(dist=pars[0][0],av=pars[0][1],
-                        r=[pars[0][2],pars[0][3],pars[0][4]])
-        return pars
-    
-    def fit(self,order_radii=False,use_gaia=True,use_mag=[]):
+    def fit(self,use_gaia=True,use_mag=[],fitstar=[]):
         if len(use_mag)==0: use_mag=range(len(self.sed))
         self.use_mag=use_mag
         if (len(self.gaia)>0) & (use_gaia):
@@ -546,14 +510,32 @@ class SEDFit:
             flux=self.sed['flux'][self.use_mag]
             eflux=self.sed['eflux'][self.use_mag]
             self.use_gaia=False
+            
+        if fitstar==[]: fitstar=[1]*self.nstar
+        self.fitstar=fitstar
+        boundlower,boundupper=self.boundlower[0:2],self.boundupper[0:2]
+        p0 = self.dist,self.av#,self.r[0]
+        for i in range(len(self.r)):
+            if fitstar[i]>0:
+                p0 = (*p0, self.r[i])
+                boundlower.append(self.boundlower[2+i])
+                boundupper.append(self.boundupper[2+i])
         
-        if self.nstar==1: return self.fitsingle(flux,eflux)
-        if (self.nstar==2) & (order_radii): return self.fitbinary_r(flux,eflux)
-        if (self.nstar==2) & (not order_radii): return self.fitbinary(flux,eflux)
-        if self.nstar==3: return self.fittriple(flux,eflux)
-        if self.nstar>3:
-            raise Exception('Systems with 4+ stars are not supported yet')
-    
+        pars=curve_fit(self.func, self.f, flux, p0,
+                       sigma=eflux,absolute_sigma=True,
+                       bounds=(boundlower,boundupper))
+        r=[]
+        j=2
+        for i in range(self.nstar):
+            if self.fitstar[i]>0:
+                r.append(pars[0][j])
+                j=j+1
+            else:
+                r.append(self.r[i])
+        
+        self.addguesses(dist=pars[0][0],av=pars[0][1],
+                        r=r)
+        return pars
     
     def makeplot(self,file='',getplot=False):
         plt.rc('font', size=24) 
