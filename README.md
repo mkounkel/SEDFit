@@ -1,4 +1,4 @@
-Python module to downloads photometry and to performs a multi-component SED fitting. All the templates are already packaged, no additional download is necessary.
+Python module that queries Vizier to download photometry and to perform a multi-component SED fitting. All the templates are already packaged, no additional download is necessary.
 
 Example usage:
 
