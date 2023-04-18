@@ -9,9 +9,9 @@ Example usage:
 
 ```
 from SEDFit.sed import SEDFit
-x=SEDFit('02:03:47.1141597864','+35:35:28.665702672')
-x.addguesses(dist=166,av=0.,r=[2],teff=[10000],logg=4)
-x.addrange(dist=[100,200],r=[0.5,5],logg=[3,5])
+x=SEDFit('02:03:47.1141597864','+35:35:28.665702672',1)
+x.addguesses(r=[2],teff=[10000],logg=3)
+x.addrange(logg=[1,4])
 x.fullfit()
 x.makeplot()
 print("Distance: {} pc".format(x.getdist()))
@@ -52,11 +52,13 @@ Required keywords:<br>
 
 Optional keywords:<br>
 - grid_type: Which theoretical SEDs should be used for fitting. Options: 'kurucz' (default, Kurucz 1992), 'coelho' (Coelho 2014)<br>
-- use_gaia: Whether Gaia XP spectrum should be used or not, true by default, boolean<br>
+- use_gaia_params: Whether Gaia astrometry should be downloaded to estimate distances, true by default, boolean<br>
+- use_gaia_xp: Whether Gaia XP spectrum should be used or not, true by default, boolean<br>
+- gaia_params: FITS filename where Gaia astrometry is/should be saved, uses coordinates as default, string<br>
 - flux_filename: FITS filename where photometry is/should be saved, uses coordinates as default, string<br>
 - gaia_filename: FITS filename where Gaia spectrum is/should be saved, uses coordinates as default, string<br>
 - download_flux: Whether flux should be (re-)downloaded. False by default if flux_filename file already exists, boolean<br>
-- download_gaia: Whether Gaia spectrum should be (re-)downloaded. False by default if gaia_filename file already exists, boolean<br>
+- download_gaia: Whether Gaia XP spectrum should be (re-)downloaded. False by default if gaia_filename file already exists, boolean<br>
 - gaia: Whether Gaia fluxes (G, BP, RP) should be downloaded, True by default, boolean<br>
 - sdss: Whether SDSS fluxes (u,g,r,i,z) should be downloaded, True by default, boolean<br>
 - panstarrs: Whether PanSTARRS fluxes (g,r,i,z,y) should be downloaded, True by default, boolean<br>
@@ -64,6 +66,7 @@ Optional keywords:<br>
 - cousins: Whether Cousins fluxes (U,B,V,R,I) should be downloaded, True by default, boolean<br>
 - tmass: Whether WISE fluxes (W1, W2, W3, W4) should be downloaded, True by default, boolean<br>
 - galex: Whether GALEX fluxes (FUV, NUV) should be downloaded, True by default, boolean<br>
+- parallax_sigma: Range of distances that should be used in fitting based on Gaia parallax and corresponding uncertainty, default is 3 sigma.
 
 ```
 x.addguesses()

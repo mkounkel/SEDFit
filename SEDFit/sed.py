@@ -21,15 +21,21 @@ import glob
 import pickle
 from tqdm import tqdm
 import pkg_resources
+import warnings
+from astropy.utils.exceptions import AstropyWarning
+warnings.simplefilter('ignore', AstropyWarning)
 
 class SEDFit:
-    def __init__(self,ra,dec,radius,frame='icrs',flux_filename='',gaia_filename='',
-                 download_flux=False,download_gaia=False,use_gaia=True,**kwargs):
+    def __init__(self,ra,dec,radius,frame='icrs',flux_filename='',gaia_filename='',gaia_params='',parallax_sigma=3,
+                 download_flux=False,download_gaia=False,use_gaia_params=True,use_gaia_xp=True,**kwargs):
         
+        crd=(str(ra)+'_'+str(dec)+'_'+str(radius)).replace(':','_')
         if flux_filename=='':
-            flux_filename=str(ra)+'_'+str(dec)+'_'+str(radius)+'_sed.fits'
+            flux_filename=crd+'_sed.fits'
         if gaia_filename=='':
-            gaia_filename=str(ra)+'_'+str(dec)+'_'+str(radius)+'_gaiaxp.fits'
+            gaia_filename=crd+'_gaiaxp.fits'
+        if gaia_params=='':
+            gaia_params=crd+'_gaiaparams.fits'
         
         if (' ' in str(ra)) or (':' in str(ra)): raunit=u.hourangle
         else: raunit=u.deg
@@ -46,12 +52,42 @@ class SEDFit:
         else:
             self.downloadflux(**kwargs)
             if len(self.sed)==0:
-                print("Can't download SED for this source. Try again later - if the issue persists no star may be found at this position.")
+                print("Can't download SED for this source. Try again later - if the issue persists no star may be found at this position, or the radius is too large.")
                 return
             else:
                 self.sed.write(flux_filename,overwrite=True)
+                
         
-        if use_gaia:
+        if use_gaia_params:
+            if (len(glob.glob(gaia_params))>0):
+                self.gaiaparams=Table.read(gaia_params)
+            else:
+                try:
+                    Gaia.MAIN_GAIA_TABLE = "gaiadr3.gaia_source"
+                    j = Gaia.cone_search_async(c, self.radius*u.arcsec,verbose=False)
+                    self.gaiaparams=Table(j.get_results())
+                    for col in self.gaiaparams.columns:
+                        if self.gaiaparams[col].dtype != object: continue
+                        self.gaiaparams[col] = [str(n) for n in self.gaiaparams[col]]
+                        
+                    a=np.argsort(self.gaiaparams['dist'])
+                    self.gaiaparams=self.gaiaparams[a][0:1]
+                    
+                    if len(self.gaiaparams)>0:
+                        self.gaiaparams.write(gaia_params)
+                    else:
+                        self.gaiaparams = Table()
+                        self.gaiaparams['parallax']=[np.nan]
+                        print('Could not find Gaia astrometry for this source')
+                except:
+                    self.gaiaparams = Table()
+                    self.gaiaparams['parallax']=[np.nan]
+                    print('Could not find Gaia astrometry for this source')
+        else:
+            self.gaiaparams = Table()
+            self.gaiaparams['parallax']=[np.nan]
+        
+        if (use_gaia_xp) & (use_gaia_params):
             if (not download_gaia) & (len(glob.glob(gaia_filename))>0):
                 self.gaia=Table.read(gaia_filename)
             else:
@@ -75,8 +111,24 @@ class SEDFit:
         self.refir=np.where(self.la>=1.1*u.micron)
         
         self.nstar=1
-        self.addrange(dist=[0,1e5],av=[0.,20.],r=[0.,2000.],teff=[0.,1e6],logg=[-2.,10.],feh=[-5.,2.])
-        self.addguesses(dist=1000.,av=0.,r=[1.],teff=[5000.],logg=[4.],feh=0.,alpha=0.)
+        
+        if np.isfinite(self.gaiaparams['parallax'][0]):
+            d=1000/self.gaiaparams['parallax'][0]
+            ed=[(1000/(self.gaiaparams['parallax']+parallax_sigma*self.gaiaparams['parallax_error']))[0],(1000/(self.gaiaparams['parallax']-parallax_sigma*self.gaiaparams['parallax_error']))[0]]
+            ruwe=self.gaiaparams['ruwe'][0]
+            print('Gaia DR3 distance towards this source is ' + str(np.round(d,1)) +' pc')
+            print(str(parallax_sigma)+' sigma uncertainty in distance is ' + str(np.round(ed[0],1)) +' - '+str(np.round(ed[1],1)) +' pc' )
+            if ruwe<1.4:
+                print('RUWE is ' + str(np.round(ruwe,3)) )
+            else:
+                print('RUWE is' + str(np.round(ruwe,3)) +', distance measurement may be unreliable, proceed with caution')
+        else:
+            print('Gaia parallax is not available, distance is arbitrarily set by default and should be manually adjusted.')
+            d=1000.
+            ed=[0,1e5]
+        print('Maximum Av along the line of sight is '+str(np.round(self.maxav,3)))
+        self.addrange(dist=ed,av=[0.,self.maxav],r=[0.,2000.],teff=[0.,1e6],logg=[-2.,10.],feh=[-5.,2.])
+        self.addguesses(dist=d,av=0.,r=[1.],teff=[5000.],logg=[4.],feh=0.,alpha=0.)
         
         
     def getmaxreddening(self,coords):
@@ -102,6 +154,10 @@ class SEDFit:
         
         self.sed["sed_flux"]=self.sed["sed_flux"].to((u.erg/u.s/(u.cm**2)/u.AA),equivalencies=u.spectral_density(self.sed['la'].data*u.AA))
         self.sed["sed_eflux"]=self.sed["sed_eflux"].to((u.erg/u.s/(u.cm**2)/u.AA),equivalencies=u.spectral_density(self.sed['la'].data*u.AA))
+        
+        a=np.where(self.sed['sed_flux']>0)[0]
+        self.sed=self.sed[a]
+        
         a=np.where((np.isnan(self.sed["sed_eflux"])==True) | (self.sed["sed_eflux"]/self.sed["sed_flux"]<0.02))[0]
         self.sed["sed_eflux"][a]=self.sed["sed_flux"][a]*0.02
         
@@ -111,7 +167,7 @@ class SEDFit:
         self.definefilter(**kwargs)
         a=np.argsort(self.sed['la'])
         self.sed=self.sed[a]
-        self.sed.keep_columns(['sed_filter','la','width','flux','eflux'])
+        self.sed=self.sed[['sed_filter','la','width','flux','eflux']]
         
         
     def definefilter(self,tmass=True,cousins=True,gaia=True,galex=True,johnson=True,panstarrs=True,sdss=True,wise=True,**kwargs):
@@ -172,9 +228,7 @@ class SEDFit:
             idx=idx[a]
         return idx
     def getgaia(self,c):
-        Gaia.MAIN_GAIA_TABLE = "gaiadr3.gaia_source"
-        j = Gaia.cone_search_async(c, self.radius*u.arcsec,verbose=False)
-        sid=j.get_results()['source_id']
+        sid=self.gaiaparams['source_id']
         
         datalink = Gaia.load_data(ids=sid, data_release = 'Gaia DR3', retrieval_type='XP_SAMPLED',
                                   data_structure = 'INDIVIDUAL', verbose = False, output_file = None)
@@ -412,10 +466,6 @@ class SEDFit:
         if teff is None: teff=self.teffrange
         if logg is None: logg=self.loggrange
         if feh is None: feh=self.fehrange
-        
-        if av[1]>self.maxav:
-            print('Maximum Av along the line of sight is '+str(np.round(self.maxav,3)))
-            av[1]=self.maxav
         
         r=np.array(r)
         teff=np.array(teff)
