@@ -121,7 +121,7 @@ class SEDFit:
             if ruwe<1.4:
                 print('RUWE is ' + str(np.round(ruwe,3)) )
             else:
-                print('RUWE is' + str(np.round(ruwe,3)) +', distance measurement may be unreliable, proceed with caution')
+                print('RUWE is ' + str(np.round(ruwe,3)) +', distance measurement may be unreliable, proceed with caution')
         else:
             print('Gaia parallax is not available, distance is arbitrarily set by default and should be manually adjusted.')
             d=1000.
