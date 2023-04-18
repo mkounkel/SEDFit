@@ -5,7 +5,7 @@ To install:
 pip install git+https://github.com/mkounkel/SEDFit.git
 ```
 
-Example usage:
+Example usage (single star):
 
 ```
 from SEDFit.sed import SEDFit
@@ -46,6 +46,45 @@ Chi squared: 31.84604213491017
 
 <img width="810" alt="image" src="https://user-images.githubusercontent.com/6738789/232641720-92d7f35f-3295-4c7e-b68b-5fbf72e16f77.png">
 <img width="685" alt="image" src="https://user-images.githubusercontent.com/6738789/232651588-d3b2bad2-c6b9-499c-9f48-3d9e1f71c670.png">
+
+----------------------------------
+Example usage (binary):
+```
+from SEDFit.sed import SEDFit
+import matplotlib.pyplot as plt
+x=SEDFit('16 21 26.43','21 36 59.0',1,panstarrs=False,grid_type='coelho')
+x.addguesses(dist=600,av=0.,r=[2,2],teff=[4020,6150],logg=3)
+x.addrange(dist=[500,3000],r=[1.,5],logg=[3,4],feh=[-0.5,0.5])
+idx=range(1,len(x.sed))
+pars=x.fullfit(use_gaia=True,use_mag=idx)
+print("Distance: {} pc".format(x.getdist()))
+print("AV: {} mag".format(x.getav()))
+print("Radius: {} Rsun".format(x.getr()))
+print("Teff: {} K".format(x.getteff()))
+print("Log g: {} ".format(x.getlogg()))
+print("Fe/H: {}".format(x.getfeh()))
+print("Chi squared: {}".format(x.getchisq()))
+ax=x.makeplot(getplot=True)
+ax[1].set_ylim(-0.15,0.15)
+plt.show()
+```
+
+Outputs:
+```
+Gaia DR3 distance towards this source is 1335.9 pc
+3 sigma uncertainty in distance is 945.2 - 2277.2 pc
+RUWE is 6.482, distance measurement may be unreliable, proceed with caution
+Maximum Av along the line of sight is 0.153
+
+Distance: 667.0635983893235 pc
+AV: 0.1528912991285324 mag
+Radius: [1.781174064396868, 1.9684385850298718] Rsun
+Teff: [4400.691747098117, 6221.446201534511] K
+Log g: [3.5585285091240464, 3.667922367618528] 
+Fe/H: -0.020214382215615855
+Chi squared: 2.6700444706272233
+```
+<img width="795" alt="image" src="https://user-images.githubusercontent.com/6738789/232690693-8c8bc5d1-8b96-4c4a-8d7d-8598d5d6d871.png">
 
 ----------------------------------
 
