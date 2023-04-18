@@ -13,7 +13,6 @@ x=SEDFit('02:03:47.1141597864','+35:35:28.665702672',1)
 x.addguesses(r=[2],teff=[10000],logg=3)
 x.addrange(logg=[1,4])
 x.fullfit()
-x.makeplot()
 print("Distance: {} pc".format(x.getdist()))
 print("AV: {} mag".format(x.getav()))
 print("Radius: {} Rsun".format(x.getr()))
@@ -21,19 +20,32 @@ print("Teff: {} K".format(x.getteff()))
 print("Log g: {} ".format(x.getlogg()))
 print("Fe/H: {}".format(x.getfeh()))
 print("Chi squared: {}".format(x.getchisq()))
+x.makeplot()
 x.sed['model']=x.mags
 x.sed
 ```
 
+Outputs:
+```
+Downloading https://vizier.cds.unistra.fr/viz-bin/sed?-c=30.94630899910999%2035.591296028520006&-c.rs=1 [Done]
+INFO: Query finished. [astroquery.utils.tap.core]
+Gaia XP spectra available
+Gaia DR3 distance towards this source is 196.3 pc
+3 sigma uncertainty in distance is 193.1 - 199.6 pc
+RUWE is 1.325
+Maximum Av along the line of sight is 0.266
+
+Distance: 195.97488165738196 pc
+AV: 0.26569459140300744 mag 
+Radius: [10.298017329573494] Rsun 
+Teff: [4523.642995967771] K
+Log g: [3.510695283221381] 
+Fe/H: -0.4072943677937134 
+Chi squared: 31.84604213491017
+```
+
 <img width="810" alt="image" src="https://user-images.githubusercontent.com/6738789/232641720-92d7f35f-3295-4c7e-b68b-5fbf72e16f77.png">
 <img width="685" alt="image" src="https://user-images.githubusercontent.com/6738789/232651588-d3b2bad2-c6b9-499c-9f48-3d9e1f71c670.png">
-Distance: 195.97488165738196 pc <br>
-AV: 0.26569459140300744 mag  <br>
-Radius: [10.298017329573494] Rsun <br>  
-Teff: [4523.642995967771] K  <br>
-Log g: [3.510695283221381]  <br>
-Fe/H: -0.4072943677937134  <br>
-Chi squared: 31.84604213491017
 
 ----------------------------------
 
