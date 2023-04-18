@@ -1,5 +1,10 @@
 Python module that queries Vizier to download photometry and to perform a multi-component SED fitting. All the templates are already packaged, no additional download is necessary.
 
+To install:
+```
+pip install git+https://github.com/mkounkel/SEDFit.git
+```
+
 Example usage:
 
 ```
