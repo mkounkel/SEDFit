@@ -125,7 +125,7 @@ x.addguesses()
 Provides initial guesses to the fitting process
 
 Optional keywords:<br>
-- dist: Estimated distance to the system in parsec, 1000 pc by default <br>
+- dist: Estimated distance to the system in parsec, Gaia parallax estimate by default, 1000 pc when not available <br>
 - av: Estimated extinction to the system in mag, 0 mag by default <br>
 - r: Estimated radii of all of the stars in Rsun, stored as list for all of the stars in the system, [1] Rsun by default<br>
 - teff: Estimated Teff of all of the stars in K, stored as list for all of the stars in the system, [5000] K by default<br>
@@ -148,7 +148,7 @@ x.addrange()
 Provides the allowed range of values that can be returned by the fitting, specifying lower and upper bound
 
 Optional parameters<br>
-- dist: Range of distances in pc, default [0, 1e5]<br>
+- dist: Range of distances in pc, default 3 sigma Gaia parallax estimate, [0, 1e5] when not available<br>
 - av: Range of AVs in mag, default [0., los_max.], where los_max is the maximum extinction along the line of sight from Fitzpatrick (1999) map <br>
 - r: Range of radii in Rsun, default [0,2000.]<br>
 - teff: Range of Teff in K, default [0, 1e6]<br>
