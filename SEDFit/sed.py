@@ -27,7 +27,7 @@ warnings.simplefilter('ignore', AstropyWarning)
 
 class SEDFit:
     def __init__(self,ra,dec,radius,frame='icrs',flux_filename='',gaia_filename='',gaia_params='',parallax_sigma=3,
-                 download_flux=False,download_gaia=False,use_gaia_params=True,use_gaia_xp=True,**kwargs):
+                 download_flux=False,download_gaia=False,use_gaia_params=True,use_gaia_xp=True,nstar=1,**kwargs):
         
         crd=(str(ra)+'_'+str(dec)+'_'+str(radius)).replace(':','_')
         if flux_filename=='':
@@ -110,7 +110,7 @@ class SEDFit:
         self.refuv=np.where(self.la<1.1*u.micron)
         self.refir=np.where(self.la>=1.1*u.micron)
         
-        self.nstar=1
+        self.nstar=int(nstar)
         
         if np.isfinite(self.gaiaparams['parallax'][0]):
             d=1000/self.gaiaparams['parallax'][0]
@@ -128,7 +128,7 @@ class SEDFit:
             ed=[0,1e5]
         print('Maximum Av along the line of sight is '+str(np.round(self.maxav,3)))
         self.addrange(dist=ed,av=[0.,self.maxav],r=[0.,2000.],teff=[0.,1e6],logg=[-2.,10.],feh=[-5.,2.])
-        self.addguesses(dist=d,av=0.,r=[1.],teff=[5000.],logg=[4.],feh=0.,alpha=0.)
+        self.addguesses(dist=d,av=0.,r=[1.]*nstar,teff=[5000.]*nstar,logg=[4.]*nstar,feh=0.,alpha=0.)
         
         
     def getmaxreddening(self,coords):
@@ -422,7 +422,7 @@ class SEDFit:
         return interp
         
     
-    def addguesses(self,dist=None,av=None,r=None,teff=None,logg=None,feh=None,alpha=None,area=False):
+    def addguesses(self,dist=None,av=None,r=None,teff=None,logg=None,feh=None,alpha=None,area=False,nstar=1):
         if dist is None: dist=self.dist
         if av is None: av=self.av
         if r is None: r=self.r
@@ -436,7 +436,7 @@ class SEDFit:
         if not type(logg) in [list,tuple,np.ndarray]: logg=[logg]
             
 
-        self.nstar=np.max([len(r),len(teff),len(logg)])
+        self.nstar=int(np.max([len(r),len(teff),len(logg),self.nstar,nstar]))
         
         if len(r)!=self.nstar: self.r=r*self.nstar
         else: self.r=r
@@ -631,34 +631,20 @@ class SEDFit:
         return self.feh
     
     
-    def func(self,f,dist,av,*argv):
-        r=[]
-        j=0
-        for i in range(self.nstar):
-            if self.fitstar[i]>0:
-                if (self.ratio) & (i>0):
-                    r.append(argv[j]*argv[0])
-                else:
-                    r.append(argv[j])
-                j=j+1
-            else:
-                r.append(self.r[i])
-        f,fx,m,s=self.getfluxsystem(dist,av,r)
-        m=m[self.use_mag]
-        if self.use_gaia: return np.append(m,s)
-        else: return m
-    def fit(self,use_gaia=True,use_mag=[],fitstar=[],ratio=False,ratiolambda=None,fluxratio=None):
-        
+    def fit(self,use_gaia=True,use_mag=[],fitstar=[],teffratio=None,teffratio_error=None,
+                fluxratiolambda=None,fluxratio=None,fluxratio_error=None,
+                radiusratio=None,radiusratio_error=None,full=True):
+        self.full=full
+        self.fluxratiolambda=fluxratiolambda
+        self.teffratio=teffratio
+        self.radiusratio=radiusratio
         if fluxratio is not None:
-            ratio=True
-            if ratiolambda is None:
-                raise Exception('Reference wavelength for the flux ratio is needed')
+            if fluxratiolambda is None:
+                raise Exception('Reference wavelength (fluxratiolambda) for the flux ratio is needed')
             try:
-                a=ratiolambda.unit
+                a=fluxratiolambda.unit
             except:
                 raise Exception('Reference wavelength for the flux ratio has to have appropriate units')
-                
-                
         
         if len(use_mag)==0: use_mag=range(len(self.sed))
         self.use_mag=use_mag
@@ -670,119 +656,117 @@ class SEDFit:
             flux=self.sed['flux'][self.use_mag]
             eflux=self.sed['eflux'][self.use_mag]
             self.use_gaia=False
+        if (fluxratio is not None) & (self.nstar>1):
+            flux=np.append(flux,fluxratio)
+            if fluxratio_error is not None:
+                eflux=np.append(eflux,fluxratio_error)
+            else:
+                eflux=np.append(eflux,0.1)
+        if (teffratio is not None) & (self.nstar>1) & (self.full):
+            flux=np.append(flux,teffratio)
+            if teffratio_error is not None:
+                eflux=np.append(eflux,teffratio_error)
+            else:
+                eflux=np.append(eflux,0.01)
+        if (radiusratio is not None) & (self.nstar>1):
+            flux=np.append(flux,radiusratio)
+            if radiusratio_error is not None:
+                eflux=np.append(eflux,radiusratio_error)
+            else:
+                eflux=np.append(eflux,0.1)
             
         if fitstar==[]: fitstar=[1]*self.nstar
         self.fitstar=fitstar
         
-                    
         for i in range(len(self.r)):
-            if (ratio) & (type(self.r[i]) in [list,tuple,np.ndarray]):
-                raise Exception("Cannot fractionally relate radii if facets are given")
-        self.ratio=ratio
-        
-        if (ratio) & (self.nstar>1):
-            x=np.argmin(np.abs(self.la-ratiolambda))
-            a,b=10**self.flux[0][x],10**self.flux[1][x]
-            radratio=(np.sqrt(np.array(fluxratio)*a/b))
-            if (type(radratio) not in [list,tuple,np.ndarray]):
-                radratio=[radratio*0.999,radratio*1.001]
-            self.rrange[1][0]=radratio[0]*self.r[0]
-            self.rrange[1][1]=radratio[1]*self.r[0]
-            self.r[1]=np.mean(self.rrange[1])
-                
+            if (type(self.r[i]) in [list,tuple,np.ndarray]):
+                self.fitstar[i]=0
+            
         boundlower,boundupper=[self.distrange[0],self.avrange[0]],[self.distrange[1],self.avrange[1]]
         p0 = self.dist,self.av
-        for i in range(len(self.r)):
-            if fitstar[i]>0:
-                if (ratio) & (i>0):
-                    p0 = (*p0, self.r[i]/self.r[0])
-                    boundlower.append(self.rrange[i][0]/self.r[0])
-                    boundupper.append(self.rrange[i][1]/self.r[0])
-                else:
+        if full:
+            
+            for i in range(len(self.r)):
+                if fitstar[i]>0:
+                        p0 = (*p0, self.r[i],self.teff[i],self.logg[i])
+                        boundlower.extend([self.rrange[i][0],self.teffrange[i][0],self.loggrange[i][0]])
+                        boundupper.extend([self.rrange[i][1],self.teffrange[i][1],self.loggrange[i][1]])
+            p0 = (*p0,self.feh)
+            boundlower.append(self.fehrange[0])
+            boundupper.append(self.fehrange[1])
+        else:
+            for i in range(len(self.r)):
+                if fitstar[i]>0:
                     p0 = (*p0, self.r[i])
                     boundlower.append(self.rrange[i][0])
                     boundupper.append(self.rrange[i][1])
                     
         
-        pars=curve_fit(self.func, self.f, flux, p0,
-                       sigma=eflux,absolute_sigma=True,
-                       bounds=(boundlower,boundupper))
-        r=[]
-        j=2
-        
-        for i in range(self.nstar):
-            if self.fitstar[i]>0:
-                if (ratio) & (i>0):
-                    r.append(pars[0][j]*pars[0][2])
-                else:
-                    r.append(pars[0][j])
-                j=j+1
-            else:
-                r.append(self.r[i])
-        
-        self.addguesses(dist=pars[0][0],av=pars[0][1],
-                        r=r)
-        return pars
-        
-    def fullfit(self,use_gaia=True,use_mag=[],fitstar=[]):
-        
-        if len(use_mag)==0: use_mag=range(len(self.sed))
-        self.use_mag=use_mag
-        if (len(self.gaia)>0) & (use_gaia):
-            flux=np.append(self.sed['flux'][self.use_mag],self.gaia['flux'])
-            eflux=np.append(self.sed['eflux'][self.use_mag],self.gaia['eflux'])
-            self.use_gaia=True
-        else:
-            flux=self.sed['flux'][self.use_mag]
-            eflux=self.sed['eflux'][self.use_mag]
-            self.use_gaia=False
-            
-        if fitstar==[]: fitstar=[1]*self.nstar
-        self.fitstar=fitstar
-                
-        boundlower,boundupper=[self.distrange[0],self.avrange[0],self.fehrange[0]],[self.distrange[1],self.avrange[1],self.fehrange[1]]
-        p0 = self.dist,self.av,self.feh
-        for i in range(len(self.r)):
-            if fitstar[i]>0:
-                    p0 = (*p0, self.r[i],self.teff[i],self.logg[i])
-                    boundlower.extend([self.rrange[i][0],self.teffrange[i][0],self.loggrange[i][0]])
-                    boundupper.extend([self.rrange[i][1],self.teffrange[i][1],self.loggrange[i][1]])
-        
-        pars=curve_fit(self.fullfunc, self.f, flux, p0,
+        pars=curve_fit(self.wrap, self.f, flux, p0,
                        sigma=eflux,absolute_sigma=True,
                        bounds=(boundlower,boundupper))
         r,teff,logg=[],[],[]
-        j=3
-        
-        for i in range(self.nstar):
-            if self.fitstar[i]>0:
-                r.append(pars[0][j])
-                teff.append(pars[0][j+1])
-                logg.append(pars[0][j+2])
-                j=j+3
-            else:
-                r.append(self.r[i])
-                teff.append(self.teff[i])
-                logg.append(self.logg[i])
-        
-        self.addguesses(dist=pars[0][0],av=pars[0][1],
-                        r=r,teff=teff,logg=logg,feh=pars[0][2])
+        j=2
+        if full:
+            for i in range(self.nstar):
+                if self.fitstar[i]>0:
+                    r.append(pars[0][j])
+                    teff.append(pars[0][j+1])
+                    logg.append(pars[0][j+2])
+                    j=j+3
+                else:
+                    r.append(self.r[i])
+                    teff.append(self.teff[i])
+                    logg.append(self.logg[i])
+            
+            self.addguesses(dist=pars[0][0],av=pars[0][1],
+                            r=r,teff=teff,logg=logg,feh=pars[0][-1])
+        else:
+            for i in range(self.nstar):
+                if self.fitstar[i]>0:
+                    r.append(pars[0][j])
+                    j=j+1
+                else:
+                    r.append(self.r[i])
+            
+            self.addguesses(dist=pars[0][0],av=pars[0][1],
+                            r=r)
         return pars
         
-    def fullfunc(self,f,dist,av,feh,*argv):
+    def wrap(self,f,dist,av,*argv):
         r,teff,logg=[],[],[]
         j=0
-        for i in range(self.nstar):
-            if self.fitstar[i]>0:
-                r.append(argv[j])
-                teff.append(argv[j+1])
-                logg.append(argv[j+2])
-                j=j+3
-            else:
-                r.append(self.r[i])
-                teff.append(self.teff[i])
-                logg.append(self.logg[i])
-        f,fx,m,s=self.getfluxsystem(dist,av,r,teff=teff,logg=logg,feh=feh,fullfit=True)
+        if self.full:
+            feh=argv[-1]
+            for i in range(self.nstar):
+                if self.fitstar[i]>0:
+                    r.append(argv[j])
+                    teff.append(argv[j+1])
+                    logg.append(argv[j+2])
+                    j=j+3
+                else:
+                    r.append(self.r[i])
+                    teff.append(self.teff[i])
+                    logg.append(self.logg[i])
+            f,fx,m,s=self.getfluxsystem(dist,av,r,teff=teff,logg=logg,feh=feh,fullfit=True)
+        else:
+            for i in range(self.nstar):
+                if self.fitstar[i]>0:
+                    r.append(argv[j])
+                    j=j+1
+                else:
+                    r.append(self.r[i])
+            f,fx,m,s=self.getfluxsystem(dist,av,r)
+            
         m=m[self.use_mag]
-        if self.use_gaia: return np.append(m,s)
-        else: return m
+        if self.use_gaia: m=np.append(m,s)
+            
+        if (self.fluxratiolambda is not None) & (self.nstar>1):
+            x=np.argmin(np.abs(self.la-self.fluxratiolambda))
+            a,b=10**fx[0][x],10**fx[1][x]
+            m=np.append(m,b/a)
+        if (self.teffratio is not None) & (self.nstar>1) & (self.full):
+            m=np.append(m,teff[1]/teff[0])
+        if (self.radiusratio is not None) & (self.nstar>1):
+            m=np.append(m,r[1]/r[0])
+        return m

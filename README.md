@@ -12,7 +12,7 @@ from SEDFit.sed import SEDFit
 x=SEDFit('02:03:47.1141597864','+35:35:28.665702672',1)
 x.addguesses(r=[2],teff=[10000],logg=3)
 x.addrange(logg=[1,4])
-x.fullfit()
+x.fit()
 print("Distance: {} pc".format(x.getdist()))
 print("AV: {} mag".format(x.getav()))
 print("Radius: {} Rsun".format(x.getr()))
@@ -56,7 +56,7 @@ x=SEDFit('16 21 26.43','21 36 59.0',1,panstarrs=False,grid_type='coelho')
 x.addguesses(dist=600,av=0.,r=[2,2],teff=[4020,6150],logg=3)
 x.addrange(dist=[500,3000],r=[1.,5],logg=[3,4],feh=[-0.5,0.5])
 idx=range(1,len(x.sed))
-pars=x.fullfit(use_gaia=True,use_mag=idx)
+pars=x.fit(use_gaia=True,use_mag=idx)
 print("Distance: {} pc".format(x.getdist()))
 print("AV: {} mag".format(x.getav()))
 print("Radius: {} Rsun".format(x.getr()))
@@ -163,27 +163,22 @@ Stipulations:<br>
 - The ranges can be arbitrary, but keep in mind the bounds of the grid that is being used<br>
 
 ```
-x.fullfit()
+x.fit()
 ```
 Performs the full SED fitting, including r, teff, logg, dist, av, feh
 
 Optional parameters<br>
+- fullfit: if True, performs a full fit that includes autonomous determination of teff, logg, and feh. Otherwise stellar parameters are passed as-is, only radii, distance, and av are fitted. True by default.
 - fitstar: list of stars that should be used in the fitted process, vs those the parameters of which should be passed directly from the initial guesses unaltered. 1=include, 0=exclude, e.g., [0,0,1] would preserve the parameters of the first two stars and would try to fit the residual fluxes using only the third one. System-wide parameters such as feh, av, dist would be fit in all cases. By default, fits all stars. If meshes are used, fitstar for the stars where this is the case must be set to 0.
 - use_gaia: whether to use Gaia XP spectrum in the fitting process, True by default, boolean
 - use_mag: list of indices of x.sed table that are used for fitting, as some fluxes could be of poor quality, such as due to saturation, source mismatch, or IR/UV excess. Uses all fluxes by default. E.g, in the example above, Fluxes from SDSS and Pan-STARRS i band are highly discrepant from the model. To improve the quality of the fit and to exclude them,<br> use_mag=np.where((x.sed['sed_filter']!='PAN-STARRS.PS1.i') & (x.sed['sed_filter']!='SDSS.i'))[0]
-
-```
-x.fit()
-```
-An alternative to fullfit, fitting only dist, av, and radii of the stars, the remainig parameters are preserved. 
-
-Optional parameters<br>
-- fitstar: same as above
-- use_gaia: same as above
-- use_mag: same as above
-- ratio: Whether the flux ratio between the stars in a binary at one of the passbands is known, to provide a constraint on the radii. False by default, boolean. If True, requires both ratiolambda and fluxratio.
-- ratiolambda: if ratio=True, reference wavelength at which the flux ratios are known
-- fluxratio: if ratio=True, known flux ratio.
+- teffratio: If temperature ratio between secondary and primary is known, it can be specified to constrain the fit. Can only be used in fullfit.
+- teffratio_error: Weight placed on teffratio in fitting the SED, 0.01 by default.
+- radiusratio: If ratio of radii between secondary and primary is known, it can be specified to constrain the fit, float.
+- radiusratio_error: Weight placed on teffratio in fitting the SED, 0.1 by default.
+- fluxratio: If ratio of fluxes at a given wavelength between secondary and primary is known, it can be specified to constrain the fit, float.
+- fluxratiolambda: Wavelength at which the flux ratio is determined, required for parsing fluxratio. Quantity, units of wavelength need to be specified.
+- fluxratioratio_error: Weight placed on teffratio in fitting the SED, 0.1 by default.
 
 ```
 x.makeplot()
