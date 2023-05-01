@@ -3,8 +3,6 @@ import astropy.coordinates as coord
 from astropy.io import fits
 from astropy.table import Table,vstack
 from astropy.modeling import models
-from specutils import Spectrum1D
-from specutils.manipulation import SplineInterpolatedResampler,FluxConservingResampler
 from dust_extinction.averages import GCC09_MWAvg,G21_MWAvg
 from dust_extinction.parameter_averages import F99
 from scipy.optimize import curve_fit
@@ -22,6 +20,9 @@ import pickle
 from tqdm import tqdm
 import pkg_resources
 import warnings
+import bz2
+import tarfile
+
 from astropy.utils.exceptions import AstropyWarning
 warnings.simplefilter('ignore', AstropyWarning)
 
@@ -265,63 +266,64 @@ class SEDFit:
         a=np.where((la>1000*u.AA))[0]
         return [np.round(np.log10((spec[a]*la[a]).value),3)],la[a],[header['TEFF']],[header['LOG_G']],[header['FEH']],[header['AFE']]
 
-    def load_phoenix_sed(self,name,laname):
-        spline = SplineInterpolatedResampler()
+    def load_phoenix_sed(self,name,la,splits):
         hdul = fits.open(name)
         spec = hdul[0].data*u.erg/u.s/(u.cm**3)
         spec=spec.to(u.erg/u.s/(u.cm**2)/u.AA)
         header=hdul[0].header
         hdul.close()
-        hdul = fits.open(laname)
-        la=hdul[0].data*u.AA
-        lsf=self.lsf_rotate(1,100)
-        spec=np.convolve(spec,lsf)/100
-        a=np.where((la>1000*u.AA))[0]
-        hdul.close()
-        sp = Spectrum1D(spectral_axis=la[a], flux=spec[a])
-        la=la[a[np.arange(0,len(a),200)]]
-        sp=spline(sp,la)
-        spec=sp.flux
         
         bb = models.BlackBody(temperature=header['PHXTEFF']*u.K)
-        l=np.arange(55000,320000,5000)*u.AA
-        b=((bb(l)*u.sr).to(u.erg/u.s/(u.cm**2)/u.AA,equivalencies=u.spectral_density(l)))
+        ll=np.arange(55000,350000,10)*u.AA
+        b=((bb(ll)*u.sr).to(u.erg/u.s/(u.cm**2)/u.AA,equivalencies=u.spectral_density(ll)))
         b=b/b[0]*spec[-1]
-        la=np.append(la,l[1:])
         spec=np.append(spec,b[1:])
         
-        return [np.round(np.log10((spec*la).value),3)],la,[header['PHXTEFF']],[header['PHXLOGG']],[header['PHXM_H']],[header['PHXALPHA']]
-    
-    def load_atlas_sed(self,name):
-        n=name.split('/')[-1].replace('m','-').replace('p','+')
-        t=Table.read(name,format='ascii')
-        la=t['col1']*u.AA
-        spec=t['col2']*u.erg/u.s/(u.cm**2)/u.AA
-        
-        if n[4]=='t':
-            teff=np.float(n.split('t')[1].split('g')[0])
-            logg=np.float(n.split('g')[1].split('k')[0])/10
-            feh=np.float(n[1:4])/10
-            alpha=0
+        l=10**np.arange(np.log10(913),np.log10(320000),0.003)*u.AA
             
-        else:
-            teff=np.float(n.split('t')[1].split('g')[0])
-            logg=np.float(n.split('g')[1].split('k')[0])/10
-            feh=np.float(n[1:4])/10
-            alpha=0.4
+        s=[]
+        for j in splits:
+            s.append(np.sum(spec[j].value)/len(j))
         
-        a=np.where((la<10*u.micron) & (la>912*u.AA))[0]
-        spec,la=spec[a],la[a]
-        l=np.arange(100000,320000,5000)*u.AA
-        
-        bb = models.BlackBody(temperature=teff*u.K)
-        b=((bb(l)*u.sr).to(u.erg/u.s/(u.cm**2)/u.AA,equivalencies=u.spectral_density(l)))
-        b=b/b[0]*spec[-1]
-        la=np.append(la,l[1:])
-        spec=np.append(spec,b[1:])
-        
-        return [np.round(np.log10((spec*la).value),3)],la,[teff],[logg],[feh],[alpha]
+        return [np.round(np.log10((np.array(s)*l).value),3)],l,[header['PHXTEFF']],[header['PHXLOGG']],[header['PHXM_H']],[header['PHXALPHA']]
 
+    def load_btsettl_sed(self,name):
+        n=name.split('/')[-1].replace('m','-').replace('p','+')
+        t=Table.read(name)
+        la=t['WAVELENGTH'].data*u.AA
+        x=t.keys()
+        x.pop(0)
+        spec,logg,feh,teff,alpha=[],[],[],[],[]
+        tt=int(n.split('_')[1].split('.')[0])
+        ff=int(n[7:10])/10
+        
+        l=10**np.arange(np.log10(913),np.log10(320000),0.003)*u.AA
+        
+        ll=np.diff(l.value)
+        d=[ll[0]]
+        d.extend(ll)
+        d.append(ll[-1])
+        d=np.array(d)
+        l1=l.value-d[:-1]*0.5
+        l2=l.value+d[1:]*0.5
+
+        splits=[]
+        for j in range(len(l)):
+            splits.append(np.where((la.value>l1[j]) & (la.value<l2[j]))[0])
+        
+        for i in x:
+            if np.sum(t[i].data)>0:
+                s=[]
+                for j in splits:
+                    s.append(np.sum(t[i].data[j])/len(j))
+                s=np.array(s)*u.erg/u.s/(u.cm**2)/u.AA*l
+                spec.append(np.round(np.log10(s.value),3))
+                logg.append(int(i[1:])/10)
+                teff.append(tt)
+                feh.append(ff)
+                alpha.append(0)
+                
+        return spec,l,teff,logg,feh,alpha
 
     def load_kurucz_sed(self,name):
         n=name.split('/')[-1].replace('m','-').replace('p','+')
@@ -353,7 +355,7 @@ class SEDFit:
         la=np.append(la[a],l[1:])
         return spec,la,teff,logg,feh,alpha
 
-    def add_new_grid(self,grid_path='',grid_pickle='',grid_type='coelho',loadgrid=True,laname=None,**kwargs):
+    def add_new_grid(self,grid_path='',grid_pickle='',grid_type='kurucz',loadgrid=True,laname=None,compressed=True,**kwargs):
         
         if grid_pickle=='':
             grid_pickle='sed_'+grid_type+'.p'
@@ -361,7 +363,10 @@ class SEDFit:
         else:
             fullpath=grid_pickle
         if loadgrid & len(glob.glob(fullpath))>0:
-            flux,t,la=pickle.load(open(fullpath,'rb'))
+            if compressed:
+                flux,t,la = pickle.load(bz2.BZ2File(fullpath,'rb'))
+            else:
+                flux,t,la = pickle.load(open(fullpath,'rb'))
         else:
             path= glob.glob(grid_path)
             
@@ -375,29 +380,58 @@ class SEDFit:
                 
             t = Table(names=('teff','logg','feh','alpha'))
             flux=[]
+            
+            if grid_type=='phoenix':
+                    if laname is None:
+                        raise Exception("Please provide wavelength array path (laname)")
+                    hdul = fits.open(laname)
+                    la=hdul[0].data*u.AA
+                    hdul.close()
+                    l=np.arange(55000,350000,10)*u.AA
+                    la=np.append(la,l[1:])
+                    
+                    l=10**np.arange(np.log10(913),np.log10(320000),0.003)*u.AA
+                    
+                    ll=np.diff(l.value)
+                    d=[ll[0]]
+                    d.extend(ll)
+                    d.append(ll[-1])
+                    d=np.array(d)
+                    l1=l.value-d[:-1]*0.5
+                    l2=l.value+d[1:]*0.5
+                    
+                    splits=[]
+                    for j in range(len(l)):
+                        splits.append(np.where((la.value>l1[j]) & (la.value<l2[j]))[0])
+                        
             for i in tqdm(path):
-                f,la,teff,logg,feh,alpha=self.load_sed(grid_type,i,laname)
+                if grid_type=='phoenix':
+                    f,la,teff,logg,feh,alpha=self.load_sed(grid_type,i,la=la,splits=splits)
+                else:
+                    f,la,teff,logg,feh,alpha=self.load_sed(grid_type,i)
                 for j in range(len(f)):
                     flux.append(f[j])
-                    t.add_row((teff[j],logg[j],feh[j],alpha[j]))
-            pickle.dump( [flux,t,la], open(grid_pickle, "wb" ) )
+                    t.add_row((teff[j],logg[j],feh[j],alpha[j]))   
+            if compressed:
+                pickle.dump( [flux,t,la], bz2.BZ2File(grid_pickle,'wb') )
+            else:
+                pickle.dump( [flux,t,la], open(grid_pickle,'wb') )
             
         self.interp=self.makeinterp(t,flux)
         self.la=la
+        self.grid_table=t
         return
-    def load_sed(self,grid_type,i,laname):
+    def load_sed(self,grid_type,i,la=None,splits=None):
         if grid_type=='coelho':
             return self.load_coelho_sed(i)
         elif grid_type=='kurucz':
             return self.load_kurucz_sed(i)
-        elif grid_type=='atlas9':
-            return self.load_atlas_sed(i)
+        elif grid_type=='btsettl':
+            return self.load_btsettl_sed(i)
         elif grid_type=='phoenix':
-            if laname is None:
-                raise Exception("Please provide wavelength array path (laname)")
-            return self.load_phoenix_sed(i,laname)
+            return self.load_phoenix_sed(i,la,splits)
         else:
-            raise Exception("Unsupported grid type, available options are 'coelho', 'kurucz', and 'phoenix'")
+            raise Exception("Unsupported grid type, available options are 'btsettl', 'coelho', 'kurucz', and 'phoenix'")
 
     def makeinterp(self,t,flux):
         teff=np.unique(np.array(t['teff']))
@@ -453,9 +487,14 @@ class SEDFit:
         
         self.flux=[]
         for i in range(len(self.r)):
-            self.flux.append(self.interp((self.teff[i],self.logg[i],self.feh,self.alpha)))
+            spec=self.interp((self.teff[i],self.logg[i],self.feh,self.alpha))
+            self.flux.append(spec)
+            if np.sum(spec)==0:
+                print('Initial guesses for star '+str(i+1)+' are outside of the grid edges; skipping')
         self.f,self.fx,self.mags,self.spec=self.getfluxsystem(self.dist,self.av,self.r)
         self.addrange()
+        
+        
         return
     
 
@@ -519,21 +558,6 @@ class SEDFit:
         else:
             spec=[]
         return np.log10(f),np.log10(fx),np.log10(mags),spec
-    
-    def lsf_rotate(self,deltav,vsini,epsilon=None):
-        # based on the IDL routine LSF_ROTATE.PRO
-        if epsilon == None:
-            epsilon = 0.6
-        e1 = 2.0*(1.0 - epsilon)
-        e2 = np.pi*epsilon/2.0
-        e3 = np.pi*(1.0 - epsilon/3.0)
-        npts = np.ceil(2*vsini/deltav)
-        if npts % 2 == 0: npts += 1
-        nwid = np.floor(npts/2)
-        x = np.arange(npts) - nwid
-        x = x*deltav/vsini  
-        x1 = np.abs(1.0 - x**2)
-        return (e1*np.sqrt(x1) + e2*x1)/e3
     
     def fluxtomag(self,f):
         

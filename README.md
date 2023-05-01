@@ -35,13 +35,14 @@ Gaia DR3 distance towards this source is 196.3 pc
 RUWE is 1.325
 Maximum Av along the line of sight is 0.266
 
-Distance: 195.97488165738196 pc
-AV: 0.26569459140300744 mag 
-Radius: [10.298017329573494] Rsun 
-Teff: [4523.642995967771] K
-Log g: [3.510695283221381] 
-Fe/H: -0.4072943677937134 
-Chi squared: 31.84604213491017
+Distance: 196.99490190792739 pc
+AV: 0.2656945911988027 mag
+Radius: [10.615533229632316] Rsun
+Teff: [4480.1448640879335] K
+Log g: [3.4766722496380282] 
+Fe/H: -1.2821551967971647
+Chi squared: 31.376487311702817
+
 ```
 
 <img width="810" alt="image" src="https://user-images.githubusercontent.com/6738789/232641720-92d7f35f-3295-4c7e-b68b-5fbf72e16f77.png">
@@ -52,7 +53,7 @@ Example usage (binary):
 ```
 from SEDFit.sed import SEDFit
 import matplotlib.pyplot as plt
-x=SEDFit('16 21 26.43','21 36 59.0',1,panstarrs=False,grid_type='coelho')
+x=SEDFit('16 21 26.43','21 36 59.0',1,panstarrs=False,grid_type='btsettl')
 x.addguesses(dist=600,av=0.,r=[2,2],teff=[4020,6150],logg=3)
 x.addrange(dist=[500,3000],r=[1.,5],logg=[3,4],feh=[-0.5,0.5])
 idx=range(1,len(x.sed))
@@ -76,13 +77,13 @@ Gaia DR3 distance towards this source is 1335.9 pc
 RUWE is 6.482, distance measurement may be unreliable, proceed with caution
 Maximum Av along the line of sight is 0.153
 
-Distance: 667.0635983893235 pc
-AV: 0.1528912991285324 mag
-Radius: [1.781174064396868, 1.9684385850298718] Rsun
-Teff: [4400.691747098117, 6221.446201534511] K
-Log g: [3.5585285091240464, 3.667922367618528] 
-Fe/H: -0.020214382215615855
-Chi squared: 2.6700444706272233
+Distance: 667.310459460973 pc
+AV: 0.15289027898262858 mag
+Radius: [1.7572491971793733, 2.0280969332892815] Rsun
+Teff: [4200.000117831155, 6223.8415553868745] K
+Log g: [3.0000001515136687, 3.6338373735244778] 
+Fe/H: -0.008349217988918434
+Chi squared: 2.1674361649054195
 ```
 <img width="795" alt="image" src="https://user-images.githubusercontent.com/6738789/232690693-8c8bc5d1-8b96-4c4a-8d7d-8598d5d6d871.png">
 
@@ -102,7 +103,7 @@ Required keywords:<br>
 - radius: Radius in arcseconds around which to search Vizier for photometry.<br>
 
 Optional keywords:<br>
-- grid_type: Which theoretical SEDs should be used for fitting. Options: 'kurucz' (default, Kurucz 1992), 'coelho' (Coelho 2014)<br>
+- grid_type: Which theoretical SEDs should be used for fitting. Options: 'kurucz' (default, Kurucz 1992), 'coelho' (Coelho 2014), 'btsettl' (Allard et al. 2011), 'phoenix' (Husser et al. 2013) <br>
 - use_gaia_params: Whether Gaia astrometry should be downloaded to estimate distances, true by default, boolean<br>
 - use_gaia_xp: Whether Gaia XP spectrum should be used or not, true by default, boolean<br>
 - gaia_params: FITS filename where Gaia astrometry is/should be saved, uses coordinates as default, string<br>
@@ -168,7 +169,7 @@ x.fit()
 Performs the full SED fitting, including r, teff, logg, dist, av, feh
 
 Optional parameters<br>
-- fullfit: if True, performs a full fit that includes autonomous determination of teff, logg, and feh. Otherwise stellar parameters are passed as-is, only radii, distance, and av are fitted. True by default.
+- full: if True, performs a full fit that includes autonomous determination of teff, logg, and feh. Otherwise stellar parameters are passed as-is, only radii, distance, and av are fitted. True by default.
 - fitstar: list of stars that should be used in the fitted process, vs those the parameters of which should be passed directly from the initial guesses unaltered. 1=include, 0=exclude, e.g., [0,0,1] would preserve the parameters of the first two stars and would try to fit the residual fluxes using only the third one. System-wide parameters such as feh, av, dist would be fit in all cases. By default, fits all stars. If meshes are used, fitstar for the stars where this is the case must be set to 0.
 - use_gaia: whether to use Gaia XP spectrum in the fitting process, True by default, boolean
 - use_mag: list of indices of x.sed table that are used for fitting, as some fluxes could be of poor quality, such as due to saturation, source mismatch, or IR/UV excess. Uses all fluxes by default. E.g, in the example above, Fluxes from SDSS and Pan-STARRS i band are highly discrepant from the model. To improve the quality of the fit and to exclude them,<br> use_mag=np.where((x.sed['sed_filter']!='PAN-STARRS.PS1.i') & (x.sed['sed_filter']!='SDSS.i'))[0]
@@ -216,3 +217,4 @@ Other usefulf variables:<br>
 - x.flux: nested array of the raw fluxes for all of the stars provided by the model (i.e., not scaled by distance, radius, av, etc)
 - x.fx: nested array of the fitted model fluxes for all of the stars
 - x.f: array of the co-added fluxes for all of the model fitted fluxes
+- x.grid_table: list of the spectral parameters for the available synthetic models; inputs cannot be outside of their range
