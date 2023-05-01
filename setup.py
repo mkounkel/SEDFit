@@ -18,7 +18,7 @@ setuptools.setup(
         "License :: OSI Approved :: MIT License",
         "Operating System :: OS Independent",
     ],
-    install_requires=['astropy','numpy','scipy>=1.10.0','dust_extinction','dustmaps','matplotlib','tqdm'],
+    install_requires=['astropy','numpy','scipy','dust_extinction','dustmaps','matplotlib','tqdm'],
     package_data={
         'SEDFit': ['sed_coelho.p','sed_kurucz.p','sed_phoenix.p','sed_btsettl.p','*.dat']
     },

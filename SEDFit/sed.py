@@ -411,7 +411,13 @@ class SEDFit:
                     f,la,teff,logg,feh,alpha=self.load_sed(grid_type,i)
                 for j in range(len(f)):
                     flux.append(f[j])
-                    t.add_row((teff[j],logg[j],feh[j],alpha[j]))   
+                    t.add_row((teff[j],logg[j],feh[j],alpha[j]))  
+                    
+            flux=np.array(flux)
+            a=np.where(np.isfinite(flux)==False)
+            b=np.where(np.isfinite(flux)==True)
+            flux[a]=np.nanmin(flux[b])
+                
             if compressed:
                 pickle.dump( [flux,t,la], bz2.BZ2File(grid_pickle,'wb') )
             else:
@@ -438,6 +444,14 @@ class SEDFit:
         logg=np.unique(np.array(t['logg']))
         feh=np.unique(np.array(t['feh']))
         alpha=np.unique(np.array(t['alpha']))
+        if len(alpha)==1:
+            d=t.copy()
+            t['alpha']=alpha-0.5
+            d['alpha']=alpha+0.5
+            t=vstack([t,d])
+            alpha=np.unique(np.array(t['alpha']))
+            flux=np.vstack([flux,flux])
+            
         data=np.zeros((len(teff),len(logg),len(feh),len(alpha),len(flux[0])))
         for d in range(len(alpha)):
             q1=np.abs(t['alpha']-alpha[d])
