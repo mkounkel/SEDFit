@@ -45,6 +45,7 @@ class SEDFit:
         self.ra=c.ra.value
         self.dec=c.dec.value
         self.radius=radius
+        self.area=False
         
         self.getmaxreddening(c)
         
@@ -470,7 +471,7 @@ class SEDFit:
         return interp
         
     
-    def addguesses(self,dist=None,av=None,r=None,teff=None,logg=None,feh=None,alpha=None,area=False,nstar=1):
+    def addguesses(self,dist=None,av=None,r=None,teff=None,logg=None,feh=None,alpha=None,area=None,nstar=1):
         if dist is None: dist=self.dist
         if av is None: av=self.av
         if r is None: r=self.r
@@ -478,6 +479,7 @@ class SEDFit:
         if logg is None: logg=self.logg
         if feh is None: feh=self.feh
         if alpha is None: alpha=self.alpha
+        if area is None: area=self.area
         
         if not type(r) in [list,tuple,np.ndarray]: r=[r]
         if not type(teff) in [list,tuple,np.ndarray]: teff=[teff]
@@ -497,6 +499,7 @@ class SEDFit:
         self.av=av
         self.feh=feh
         self.alpha=alpha
+        self.area=area
         
         
         self.flux=[]
@@ -563,6 +566,8 @@ class SEDFit:
                     fx.append(np.sum(fxx,axis=0))
                 else:
                     raise Exception('Number of facets areas has to equal the number of temperatures')
+            elif self.area:
+                fx.append(((10**(flux)*( r[x]*(u.Rsun.to(u.cm))**2))/(4*np.pi*((dist*u.pc).to(u.cm))**2)*redden).value)
             else:
                 fx.append(((10**(flux)*((r[x]*u.Rsun).to(u.cm))**2)/(((dist*u.pc).to(u.cm))**2)*redden).value)
         f=np.sum(fx,axis=0)
@@ -669,12 +674,14 @@ class SEDFit:
         return self.feh
     
     
-    def fit(self,use_gaia=True,use_mag=[],fitstar=[],teffratio=None,teffratio_error=None,
+    def fit(self,use_gaia=True,use_mag=[],fitstar=[],teffratio=None,teffratio1=None,teffratio2=None,teffratio_error=None,
                 fluxratiolambda=None,fluxratio=None,fluxratio_error=None,
                 radiusratio=None,radiusratio_error=None,full=True):
         self.full=full
         self.fluxratiolambda=fluxratiolambda
         self.teffratio=teffratio
+        self.teffratio1=teffratio1
+        self.teffratio2=teffratio2
         self.radiusratio=radiusratio
         if fluxratio is not None:
             if fluxratiolambda is None:
@@ -702,6 +709,18 @@ class SEDFit:
                 eflux=np.append(eflux,0.1)
         if (teffratio is not None) & (self.nstar>1) & (self.full):
             flux=np.append(flux,teffratio)
+            if teffratio_error is not None:
+                eflux=np.append(eflux,teffratio_error)
+            else:
+                eflux=np.append(eflux,0.01)
+        if (teffratio1 is not None) & (self.nstar>2) & (self.full):
+            flux=np.append(flux,teffratio1)
+            if teffratio_error is not None:
+                eflux=np.append(eflux,teffratio_error)
+            else:
+                eflux=np.append(eflux,0.01)
+        if (teffratio2 is not None) & (self.nstar>3) & (self.full):
+            flux=np.append(flux,teffratio2)
             if teffratio_error is not None:
                 eflux=np.append(eflux,teffratio_error)
             else:
@@ -805,6 +824,10 @@ class SEDFit:
             m=np.append(m,b/a)
         if (self.teffratio is not None) & (self.nstar>1) & (self.full):
             m=np.append(m,teff[1]/teff[0])
+        if (self.teffratio1 is not None) & (self.nstar>2) & (self.full):
+            m=np.append(m,teff[2]/teff[0])
+        if (self.teffratio2 is not None) & (self.nstar>3) & (self.full):
+            m=np.append(m,teff[3]/teff[1])
         if (self.radiusratio is not None) & (self.nstar>1):
             m=np.append(m,r[1]/r[0])
         return m
