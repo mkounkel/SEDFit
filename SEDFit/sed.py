@@ -505,9 +505,13 @@ class SEDFit:
         self.flux=[]
         for i in range(len(self.r)):
             spec=self.interp((self.teff[i],self.logg[i],self.feh,self.alpha))
-            self.flux.append(spec)
+            
             if np.sum(spec)==0:
-                print('Initial guesses for star '+str(i+1)+' are outside of the grid edges; skipping')
+                print('Initial guesses for star '+str(i+1)+' are outside of the grid edges; using blackbody instead')
+                bb = models.BlackBody(temperature=teff[i]*u.K)
+                bx=((bb(self.la)*u.sr).to(u.erg/u.s/(u.cm**2)/u.AA,equivalencies=u.spectral_density(self.la)))
+                spec=np.log10(bx.value*l.value*np.pi)
+            self.flux.append(spec)
         self.f,self.fx,self.mags,self.spec=self.getfluxsystem(self.dist,self.av,self.r)
         self.addrange()
         
@@ -676,8 +680,11 @@ class SEDFit:
     
     def fit(self,use_gaia=True,use_mag=[],fitstar=[],teffratio=None,teffratio1=None,teffratio2=None,teffratio_error=None,
                 fluxratiolambda=None,fluxratio=None,fluxratio_error=None,
-                radiusratio=None,radiusratio_error=None,full=True):
+                radiusratio=None,radiusratio_error=None,full=True,fitteff=True,fitlogg=True,fitfeh=True):
         self.full=full
+        self.fitteff=fitteff
+        self.fitlogg=fitlogg
+        self.fitfeh=fitfeh
         self.fluxratiolambda=fluxratiolambda
         self.teffratio=teffratio
         self.teffratio1=teffratio1
@@ -745,12 +752,21 @@ class SEDFit:
             
             for i in range(len(self.r)):
                 if fitstar[i]>0:
-                        p0 = (*p0, self.r[i],self.teff[i],self.logg[i])
-                        boundlower.extend([self.rrange[i][0],self.teffrange[i][0],self.loggrange[i][0]])
-                        boundupper.extend([self.rrange[i][1],self.teffrange[i][1],self.loggrange[i][1]])
-            p0 = (*p0,self.feh)
-            boundlower.append(self.fehrange[0])
-            boundupper.append(self.fehrange[1])
+                    p0 = (*p0, self.r[i])
+                    boundlower.append(self.rrange[i][0])
+                    boundupper.append(self.rrange[i][1])
+                    if fitteff:
+                        p0 = (*p0,self.teff[i])
+                        boundlower.append(self.teffrange[i][0])
+                        boundupper.append(self.teffrange[i][1])
+                    if fitlogg:
+                        p0 = (*p0, self.logg[i])
+                        boundlower.append(self.loggrange[i][0])
+                        boundupper.append(self.loggrange[i][1])
+            if fitfeh:
+                p0 = (*p0,self.feh)
+                boundlower.append(self.fehrange[0])
+                boundupper.append(self.fehrange[1])
         else:
             for i in range(len(self.r)):
                 if fitstar[i]>0:
@@ -768,16 +784,29 @@ class SEDFit:
             for i in range(self.nstar):
                 if self.fitstar[i]>0:
                     r.append(pars[0][j])
-                    teff.append(pars[0][j+1])
-                    logg.append(pars[0][j+2])
-                    j=j+3
+                    j=j+1
+                    if self.fitteff:
+                        teff.append(pars[0][j])
+                        j=j+1
+                    else:
+                        teff.append(self.teff[i])
+                    if self.fitlogg:
+                        logg.append(pars[0][j])
+                        j=j+1
+                    else:
+                        logg.append(self.logg[i])
                 else:
                     r.append(self.r[i])
                     teff.append(self.teff[i])
                     logg.append(self.logg[i])
+                    
+            if self.fitfeh:
+                feh=pars[0][-1]
+            else:
+                feh=self.feh
             
             self.addguesses(dist=pars[0][0],av=pars[0][1],
-                            r=r,teff=teff,logg=logg,feh=pars[0][-1])
+                            r=r,teff=teff,logg=logg,feh=feh)
         else:
             for i in range(self.nstar):
                 if self.fitstar[i]>0:
@@ -794,13 +823,24 @@ class SEDFit:
         r,teff,logg=[],[],[]
         j=0
         if self.full:
-            feh=argv[-1]
+            if self.fitfeh:
+                feh=argv[-1]
+            else:
+                feh=self.feh
             for i in range(self.nstar):
                 if self.fitstar[i]>0:
                     r.append(argv[j])
-                    teff.append(argv[j+1])
-                    logg.append(argv[j+2])
-                    j=j+3
+                    j=j+1
+                    if self.fitteff:
+                        teff.append(argv[j])
+                        j=j+1
+                    else:
+                        teff.append(self.teff[i])
+                    if self.fitlogg:
+                        logg.append(argv[j])
+                        j=j+1
+                    else:
+                        logg.append(self.logg[i])
                 else:
                     r.append(self.r[i])
                     teff.append(self.teff[i])
