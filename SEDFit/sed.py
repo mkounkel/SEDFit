@@ -510,7 +510,7 @@ class SEDFit:
                 print('Initial guesses for star '+str(i+1)+' are outside of the grid edges; using blackbody instead')
                 bb = models.BlackBody(temperature=teff[i]*u.K)
                 bx=((bb(self.la)*u.sr).to(u.erg/u.s/(u.cm**2)/u.AA,equivalencies=u.spectral_density(self.la)))
-                spec=np.log10(bx.value*l.value*np.pi)
+                spec=np.log10(bx.value*self.la.value*np.pi)
             self.flux.append(spec)
         self.f,self.fx,self.mags,self.spec=self.getfluxsystem(self.dist,self.av,self.r)
         self.addrange()
