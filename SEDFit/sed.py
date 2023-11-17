@@ -471,7 +471,7 @@ class SEDFit:
         return interp
         
     
-    def addguesses(self,dist=None,av=None,r=None,teff=None,logg=None,feh=None,alpha=None,area=None,nstar=1):
+    def addguesses(self,dist=None,av=None,r=None,teff=None,logg=None,feh=None,alpha=None,area=None,nstar=1,verbose=True):
         if dist is None: dist=self.dist
         if av is None: av=self.av
         if r is None: r=self.r
@@ -507,7 +507,8 @@ class SEDFit:
             spec=self.interp((self.teff[i],self.logg[i],self.feh,self.alpha))
             
             if np.sum(spec)==0:
-                print('Initial guesses for star '+str(i+1)+' are outside of the grid edges; using blackbody instead')
+                if verbose:
+                    print('Initial guesses for star '+str(i+1)+' are outside of the grid edges; using blackbody instead')
                 bb = models.BlackBody(temperature=teff[i]*u.K)
                 bx=((bb(self.la)*u.sr).to(u.erg/u.s/(u.cm**2)/u.AA,equivalencies=u.spectral_density(self.la)))
                 spec=np.log10(bx.value*self.la.value*np.pi)
