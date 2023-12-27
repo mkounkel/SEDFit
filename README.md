@@ -2,7 +2,7 @@ Python module that queries Vizier to download photometry and to perform a multi-
 
 To install:
 ```
-pip install git+https://github.com/mkounkel/SEDFit.git
+pip install SEDFit
 ```
 
 Example usage (single star):
