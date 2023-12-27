@@ -486,7 +486,7 @@ class SEDFit:
         if not type(logg) in [list,tuple,np.ndarray]: logg=[logg]
             
 
-        self.nstar=int(np.max([len(r),len(teff),len(logg),self.nstar,nstar]))
+        self.nstar=int(np.max([len(r),len(teff),len(logg),nstar]))
         
         if len(r)!=self.nstar: self.r=r*self.nstar
         else: self.r=r
