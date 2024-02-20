@@ -27,81 +27,114 @@ from astropy.utils.exceptions import AstropyWarning
 warnings.simplefilter('ignore', AstropyWarning)
 
 class SEDFit:
-    def __init__(self,ra,dec,radius,frame='icrs',flux_filename='',gaia_filename='',gaia_params='',parallax_sigma=3,
+    def __init__(self,ra=' ',dec=' ',radius=1,frame='icrs',flux_filename='',gaia_filename='',gaia_params='',parallax_sigma=3,
                  download_flux=False,download_gaia=False,use_gaia_params=True,use_gaia_xp=True,nstar=1,**kwargs):
         
-        crd=(str(ra)+'_'+str(dec)+'_'+str(radius)).replace(':','_')
-        if flux_filename=='':
-            flux_filename=crd+'_sed.fits'
-        if gaia_filename=='':
-            gaia_filename=crd+'_gaiaxp.fits'
-        if gaia_params=='':
-            gaia_params=crd+'_gaiaparams.fits'
         
-        if (' ' in str(ra)) or (':' in str(ra)): raunit=u.hourangle
-        else: raunit=u.deg
-        c=coord.SkyCoord(ra=ra, dec=dec,unit=(raunit, u.deg),frame='icrs')
-        self.c=c
-        self.ra=c.ra.value
-        self.dec=c.dec.value
-        self.radius=radius
-        self.area=False
-        
-        self.getmaxreddening(c)
-        
-        if (not download_flux) & (len(glob.glob(flux_filename))>0):
-            self.sed=Table.read(flux_filename)
-        else:
-            self.downloadflux(**kwargs)
-            if len(self.sed)==0:
-                print("Can't download SED for this source. Try again later - if the issue persists no star may be found at this position, or the radius is too large.")
-                return
+        if (ra!=' ') & (dec!=' '):
+            crd=(str(ra)+'_'+str(dec)+'_'+str(radius)).replace(':','_')
+            if flux_filename=='':
+                flux_filename=crd+'_sed.fits'
+            if gaia_filename=='':
+                gaia_filename=crd+'_gaiaxp.fits'
+            if gaia_params=='':
+                gaia_params=crd+'_gaiaparams.fits'
+            
+            if (' ' in str(ra)) or (':' in str(ra)): raunit=u.hourangle
+            else: raunit=u.deg
+            c=coord.SkyCoord(ra=ra, dec=dec,unit=(raunit, u.deg),frame='icrs')
+            self.c=c
+            self.ra=c.ra.value
+            self.dec=c.dec.value
+            self.radius=radius
+            self.area=False
+            
+            self.getmaxreddening(c)
+            
+            if (not download_flux) & (len(glob.glob(flux_filename))>0):
+                self.sed=Table.read(flux_filename)
             else:
-                self.sed.write(flux_filename,overwrite=True)
-                
-        
-        if use_gaia_params:
-            if (len(glob.glob(gaia_params))>0):
-                self.gaiaparams=Table.read(gaia_params)
-            else:
-                try:
-                    Gaia.MAIN_GAIA_TABLE = "gaiadr3.gaia_source"
-                    j = Gaia.cone_search_async(c, self.radius*u.arcsec,verbose=False)
-                    self.gaiaparams=Table(j.get_results())
-                    for col in self.gaiaparams.columns:
-                        if self.gaiaparams[col].dtype != object: continue
-                        self.gaiaparams[col] = [str(n) for n in self.gaiaparams[col]]
-                        
-                    a=np.argsort(self.gaiaparams['dist'])
-                    self.gaiaparams=self.gaiaparams[a][0:1]
+                self.downloadflux(**kwargs)
+                if len(self.sed)==0:
+                    print("Can't download SED for this source. Try again later - if the issue persists no star may be found at this position, or the radius is too large.")
+                    return
+                else:
+                    self.sed.write(flux_filename,overwrite=True)
                     
-                    if len(self.gaiaparams)>0:
-                        self.gaiaparams.write(gaia_params)
-                    else:
+            
+            if use_gaia_params:
+                if (len(glob.glob(gaia_params))>0):
+                    self.gaiaparams=Table.read(gaia_params)
+                else:
+                    try:
+                        Gaia.MAIN_GAIA_TABLE = "gaiadr3.gaia_source"
+                        j = Gaia.cone_search_async(c, self.radius*u.arcsec,verbose=False)
+                        self.gaiaparams=Table(j.get_results())
+                        for col in self.gaiaparams.columns:
+                            if self.gaiaparams[col].dtype != object: continue
+                            self.gaiaparams[col] = [str(n) for n in self.gaiaparams[col]]
+                            
+                        a=np.argsort(self.gaiaparams['dist'])
+                        self.gaiaparams=self.gaiaparams[a][0:1]
+                        
+                        if len(self.gaiaparams)>0:
+                            self.gaiaparams.write(gaia_params)
+                        else:
+                            self.gaiaparams = Table()
+                            self.gaiaparams['parallax']=[np.nan]
+                            print('Could not find Gaia astrometry for this source')
+                    except:
                         self.gaiaparams = Table()
                         self.gaiaparams['parallax']=[np.nan]
                         print('Could not find Gaia astrometry for this source')
-                except:
-                    self.gaiaparams = Table()
-                    self.gaiaparams['parallax']=[np.nan]
-                    print('Could not find Gaia astrometry for this source')
+            else:
+                self.gaiaparams = Table()
+                self.gaiaparams['parallax']=[np.nan]
+            
+            if (use_gaia_xp) & (use_gaia_params):
+                if (not download_gaia) & (len(glob.glob(gaia_filename))>0):
+                    self.gaia=Table.read(gaia_filename)
+                else:
+                    try:
+                        self.gaia=self.getgaia(c)
+                        self.gaia.write(gaia_filename,overwrite=True)
+                        print('Gaia XP spectra available')
+                    except:
+                        print('No Gaia XP spectra found')
+                        self.gaia=[]
+            else:
+                self.gaia=[]
         else:
+            print('Setting up a generic star')
             self.gaiaparams = Table()
             self.gaiaparams['parallax']=[np.nan]
-        
-        if (use_gaia_xp) & (use_gaia_params):
-            if (not download_gaia) & (len(glob.glob(gaia_filename))>0):
-                self.gaia=Table.read(gaia_filename)
-            else:
-                try:
-                    self.gaia=self.getgaia(c)
-                    self.gaia.write(gaia_filename,overwrite=True)
-                    print('Gaia XP spectra available')
-                except:
-                    print('No Gaia XP spectra found')
-                    self.gaia=[]
-        else:
-            self.gaia=[]
+            self.gaia = []
+            self.sed = Table()
+            
+            self.sed['sed_filter']=np.array(['GALEX.FUV', 'GALEX.NUV', 'Johnson.U', 'SDSS.u', 'Cousins.U', 'Cousins.B',
+            'Johnson.B', 'SDSS.g', 'PAN-STARRS.PS1.g', 'GAIA.GAIA3.Gbp', 'Cousins.V',
+            'Johnson.V', 'SDSS.r', 'PAN-STARRS.PS1.r', 'Cousins.R', 'GAIA.GAIA3.G', 'Johnson.R',
+            'SDSS.i', 'PAN-STARRS.PS1.i', 'Cousins.I', 'GAIA.GAIA3.Grp', 'PAN-STARRS.PS1.z',
+            'Johnson.I', 'SDSS.z', 'PAN-STARRS.PS1.y', '2MASS.J', '2MASS.H', '2MASS.Ks',
+            'WISE.W1', 'WISE.W2', 'WISE.W3'])
+            self.sed['la']=np.array([1538.6207014101276, 2315.6631043370066, 3531.050228310502, 3561.7887353001856,
+            3605.0710493441597, 4413.083819849874, 4426.993865030675, 4718.872246248685,
+            4866.450566153741, 5317.485413571473, 5512.103907737096, 5537.155963302755,
+            6185.194476741525, 6214.6332251010535, 6469.439215118383, 6724.458843817864,
+            6939.51690821256, 7499.704174464691, 7544.570864938457, 7885.587064676616,
+            7972.387233893862, 8679.495604486132, 8778.219533275713, 8961.488333992429,
+            9633.336065790518, 12412.1362416409, 16497.14508978023, 21909.165926612906,
+            34002.551861150176, 46520.081762929745, 128075.76485642244])*u.AA
+            self.sed['width']=(np.array([0.0269,0.0616,0.0619,0.0555,0.0639,0.0928,
+                                        0.0891,0.1245,0.1166,0.4053,0.0843,
+                                        0.0818,0.1262,0.1318,0.1297,0.2158,0.1943,
+                                        0.1291,0.1243,0.095,0.2924,0.09658,
+                                        0.2176,0.1326,0.06149,0.15,0.24,0.25,
+                                        0.66,1.04,5.51])/2*u.micron).to(u.AA)
+            self.sed['flux']=np.nan*u.erg/u.s/(u.cm**2)/u.AA
+            self.sed['eflux']=np.nan*u.erg/u.s/(u.cm**2)/u.AA
+            self.maxav=10
+            
             
         
         self.add_new_grid(**kwargs)
@@ -130,7 +163,7 @@ class SEDFit:
             ed=[0,1e5]
         print('Maximum Av along the line of sight is '+str(np.round(self.maxav,3)))
         self.addrange(dist=ed,av=[0.,self.maxav],r=[0.,2000.],teff=[0.,1e6],logg=[-2.,10.],feh=[-5.,2.])
-        self.addguesses(dist=d,av=0.,r=[1.]*nstar,teff=[5000.]*nstar,logg=[4.]*nstar,feh=0.,alpha=0.)
+        self.addguesses(dist=d,av=0.,r=[1.]*nstar,teff=[5000.]*nstar,logg=[4.]*nstar,feh=0.,alpha=0.,area=False)
         
         
     def getmaxreddening(self,coords):
@@ -681,7 +714,7 @@ class SEDFit:
     
     def fit(self,use_gaia=True,use_mag=[],fitstar=[],teffratio=None,teffratio1=None,teffratio2=None,teffratio_error=None,
                 fluxratiolambda=None,fluxratio=None,fluxratio_error=None,
-                radiusratio=None,radiusratio_error=None,full=True,fitteff=True,fitlogg=True,fitfeh=True):
+                radiusratio=None,radiusratio_error=None,radiussum=None,radiussum_error=None,full=True,fitteff=True,fitlogg=True,fitfeh=True):
         self.full=full
         self.fitteff=fitteff
         self.fitlogg=fitlogg
@@ -691,6 +724,7 @@ class SEDFit:
         self.teffratio1=teffratio1
         self.teffratio2=teffratio2
         self.radiusratio=radiusratio
+        self.radiussum=radiussum
         if fluxratio is not None:
             if fluxratiolambda is None:
                 raise Exception('Reference wavelength (fluxratiolambda) for the flux ratio is needed')
@@ -737,6 +771,12 @@ class SEDFit:
             flux=np.append(flux,radiusratio)
             if radiusratio_error is not None:
                 eflux=np.append(eflux,radiusratio_error)
+            else:
+                eflux=np.append(eflux,0.1)
+        if (radiussum is not None) & (self.nstar>1):
+            flux=np.append(flux,radiussum)
+            if radiusratio_error is not None:
+                eflux=np.append(eflux,radiussum_error)
             else:
                 eflux=np.append(eflux,0.1)
             
@@ -871,4 +911,6 @@ class SEDFit:
             m=np.append(m,teff[3]/teff[1])
         if (self.radiusratio is not None) & (self.nstar>1):
             m=np.append(m,r[1]/r[0])
+        if (self.radiussum is not None) & (self.nstar>1):
+            m=np.append(m,r[1]+r[0])
         return m
