@@ -68,7 +68,7 @@ class SEDFit:
                 else:
                     try:
                         Gaia.MAIN_GAIA_TABLE = "gaiadr3.gaia_source"
-                        j = Gaia.cone_search_async(c, self.radius*u.arcsec,verbose=False)
+                        j = Gaia.cone_search_async(c, radius=self.radius*u.arcsec,verbose=False)
                         self.gaiaparams=Table(j.get_results())
                         for col in self.gaiaparams.columns:
                             if self.gaiaparams[col].dtype != object: continue
@@ -263,10 +263,11 @@ class SEDFit:
             idx=idx[a]
         return idx
     def getgaia(self,c):
-        sid=self.gaiaparams['source_id']
+        sid=self.gaiaparams['SOURCE_ID']
         
         datalink = Gaia.load_data(ids=sid, data_release = 'Gaia DR3', retrieval_type='XP_SAMPLED',
-                                  data_structure = 'INDIVIDUAL', verbose = False, output_file = None)
+                                  data_structure = 'INDIVIDUAL', verbose = False, output_file = None,format='votable')
+
         dl_keys  = [inp for inp in datalink.keys()]
         dl_keys.sort()
         i=list(datalink.keys())[0]
