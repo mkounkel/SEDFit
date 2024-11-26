@@ -5,9 +5,9 @@ with open("README.md", "r") as fh:
     
 setuptools.setup(
     name="SEDFit",
-    version="0.6.1",
+    version="0.6.2",
     author="Marina Kounkel",
-    author_email="marina.kounkel@vanderbilt.edu",
+    author_email="marina.kounkel@unf.edu",
     description="Performs a model SED fitting to the stellar fluxes",
     long_description=long_description,
     long_description_content_type="text/markdown",

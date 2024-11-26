@@ -543,16 +543,19 @@ class SEDFit:
             if np.sum(spec)==0:
                 if verbose:
                     print('Initial guesses for star '+str(i+1)+' are outside of the grid edges; using blackbody instead')
-                bb = models.BlackBody(temperature=teff[i]*u.K)
-                bx=((bb(self.la)*u.sr).to(u.erg/u.s/(u.cm**2)/u.AA,equivalencies=u.spectral_density(self.la)))
-                spec=np.log10(bx.value*self.la.value*np.pi)
+                spec=self.makeblackbody(teff[i])
             self.flux.append(spec)
         self.f,self.fx,self.mags,self.spec=self.getfluxsystem(self.dist,self.av,self.r)
         self.addrange()
         
         
         return
-    
+
+    def makeblackbody(self,teff):
+        bb = models.BlackBody(temperature=teff*u.K)
+        bx=((bb(self.la)*u.sr).to(u.erg/u.s/(u.cm**2)/u.AA,equivalencies=u.spectral_density(self.la)))
+        spec=np.log10(bx.value*self.la.value*np.pi)
+        return spec
 
     def addrange(self,dist=None,av=None,r=None,teff=None,logg=None,feh=None):
         if dist is None: dist=self.distrange
@@ -595,6 +598,8 @@ class SEDFit:
         for x in range(self.nstar):
             if fullfit:
                 flux=self.interp((teff[x],logg[x],feh,self.alpha))
+                if np.sum(flux)==0:
+                    flux=self.makeblackbody(teff[x])
             else:
                 flux=self.flux[x]
             if type(r[x]) in [list,tuple,np.ndarray]:
@@ -665,8 +670,8 @@ class SEDFit:
         ax[1].set_xscale('log')
         ax[1].set_xlim(0.1,20)
         
-        ax[1].set_xlabel('$\lambda$ ($\mu$m)')
-        ax[0].set_ylabel('log $\lambda F_\lambda$ (erg s$^{-1}$ cm$^{-2}$)')
+        #ax[1].set_xlabel('$\lambda$ ($\mu$m)')
+        #ax[0].set_ylabel('log $\lambda F_\lambda$ (erg s$^{-1}$ cm$^{-2}$)')
         ax[1].set_ylabel('Residuals')
         
         ax[1].xaxis.set_major_locator(ticker.FixedLocator([0.1,0.2,0.5,1,2,5,10]))
@@ -715,11 +720,13 @@ class SEDFit:
     
     def fit(self,use_gaia=True,use_mag=[],fitstar=[],teffratio=None,teffratio1=None,teffratio2=None,teffratio_error=None,
                 fluxratiolambda=None,fluxratio=None,fluxratio_error=None,
-                radiusratio=None,radiusratio_error=None,radiussum=None,radiussum_error=None,full=True,fitteff=True,fitlogg=True,fitfeh=True):
+                radiusratio=None,radiusratio_error=None,radiussum=None,radiussum_error=None,full=True,fitteff=True,fitlogg=True,fitfeh=True,fitdist=True,fitav=True):
         self.full=full
         self.fitteff=fitteff
         self.fitlogg=fitlogg
         self.fitfeh=fitfeh
+        self.fitdist=fitdist
+        self.fitav=fitav
         self.fluxratiolambda=fluxratiolambda
         self.teffratio=teffratio
         self.teffratio1=teffratio1
@@ -787,9 +794,21 @@ class SEDFit:
         for i in range(len(self.r)):
             if (type(self.r[i]) in [list,tuple,np.ndarray]):
                 self.fitstar[i]=0
-            
-        boundlower,boundupper=[self.distrange[0],self.avrange[0]],[self.distrange[1],self.avrange[1]]
-        p0 = self.dist,self.av
+
+
+        p0=()
+        boundlower,boundupper=[],[]
+
+        if fitdist:
+            p0 = (*p0, self.dist)
+            boundlower.append(self.distrange[0])
+            boundupper.append(self.distrange[1])
+        if fitav:
+            p0 = (*p0, self.av)
+            boundlower.append(self.avrange[0])
+            boundupper.append(self.avrange[1])
+
+        
         if full:
             
             for i in range(len(self.r)):
@@ -821,7 +840,17 @@ class SEDFit:
                        sigma=eflux,absolute_sigma=True,
                        bounds=(boundlower,boundupper))
         r,teff,logg=[],[],[]
-        j=2
+        j=0
+        if fitdist:
+            dist=pars[0][j]
+            j=j+1
+        else:
+            dist=self.dist
+        if fitav:
+            av=pars[0][j]
+            j=j+1
+        else:
+            av=self.av
         if full:
             for i in range(self.nstar):
                 if self.fitstar[i]>0:
@@ -847,7 +876,7 @@ class SEDFit:
             else:
                 feh=self.feh
             
-            self.addguesses(dist=pars[0][0],av=pars[0][1],
+            self.addguesses(dist=dist,av=av,
                             r=r,teff=teff,logg=logg,feh=feh)
         else:
             for i in range(self.nstar):
@@ -857,13 +886,23 @@ class SEDFit:
                 else:
                     r.append(self.r[i])
             
-            self.addguesses(dist=pars[0][0],av=pars[0][1],
+            self.addguesses(dist=dist,av=av,
                             r=r)
         return pars
         
-    def wrap(self,f,dist,av,*argv):
+    def wrap(self,f,*argv):
         r,teff,logg=[],[],[]
         j=0
+        if self.fitdist:
+            dist=argv[j]
+            j=j+1
+        else:
+            dist=self.dist
+        if self.fitav:
+            av=argv[j]
+            j=j+1
+        else:
+            av=self.av
         if self.full:
             if self.fitfeh:
                 feh=argv[-1]
