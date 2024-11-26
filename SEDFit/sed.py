@@ -280,6 +280,9 @@ class SEDFit:
         d['width']=20*u.AA
         d['sed_filter']='XP'
         
+        a=np.where(d['flux']>0)[0]
+        d=d[a]
+        
         d['eflux']=d["eflux"]/d["flux"]/np.log(10)
         d['flux'] =np.log10(d["flux"]*d['la'])
         return d
