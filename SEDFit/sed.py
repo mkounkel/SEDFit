@@ -183,6 +183,7 @@ class SEDFit:
         except:
             self.sed=[]
             return
+            
         self.sed['la']=self.sed['sed_freq'].to(u.AA, equivalencies=u.spectral())
         a=np.where((self.sed['la']<15*u.micron) & (self.sed['la']>1000*u.AA))[0]
         self.sed=self.sed[a]
@@ -197,7 +198,7 @@ class SEDFit:
         self.sed["sed_eflux"][a]=self.sed["sed_flux"][a]*0.02
         
         self.sed['eflux']=self.sed["sed_eflux"]/self.sed["sed_flux"]/np.log(10)
-        self.sed['flux'] =np.log10(self.sed["sed_flux"]*self.sed['la'])
+        self.sed['flux'] =np.log10(self.sed["sed_flux"].value*self.sed['la'])
         
         self.definefilter(**kwargs)
         a=np.argsort(self.sed['la'])
@@ -673,8 +674,8 @@ class SEDFit:
         ax[1].set_xscale('log')
         ax[1].set_xlim(0.1,20)
         
-        #ax[1].set_xlabel('$\lambda$ ($\mu$m)')
-        #ax[0].set_ylabel('log $\lambda F_\lambda$ (erg s$^{-1}$ cm$^{-2}$)')
+        ax[1].set_xlabel('$\lambda$ ($\mu$m)')
+        ax[0].set_ylabel('log $\lambda F_\lambda$ (erg s$^{-1}$ cm$^{-2}$)')
         ax[1].set_ylabel('Residuals')
         
         ax[1].xaxis.set_major_locator(ticker.FixedLocator([0.1,0.2,0.5,1,2,5,10]))
