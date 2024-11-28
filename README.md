@@ -116,7 +116,6 @@ Optional keywords:<br>
 - parallax_sigma: Range of distances that should be used in fitting based on Gaia parallax and corresponding uncertainty, default is 3 sigma.
 - nstar: How many stars to initialize, default is 1.
 - maxav: Specify maximum av along the line of sight, will query Fitzpatrick (1999) map by default.
-
 - gaia: Whether Gaia fluxes (G, BP, RP) should be downloaded, True by default, boolean
 - sdss: Whether SDSS fluxes (u,g,r,i,z) should be downloaded, True by default, boolean
 - panstarrs: Whether PanSTARRS fluxes (g,r,i,z,y) should be downloaded, True by default, boolean
@@ -127,7 +126,6 @@ Optional keywords:<br>
 - wise: Whether WISE fluxes (W1, W2, W3) should be downloaded, True by default, boolean
 - spitzer: Whether Spitzer fluxes (3.6, 4.5, 5.8, 8.0, 24 micron) should be downloaded, True by default, boolean
 - xmm: Whether XMM fluxes (V, B, U, UVW1, UVM2, UVW2) should be downloaded, False by default, boolean
-  
 - vizier_filename: filename to a vot table contianing Vizier photometry queried from http://vizier.cds.unistra.fr/vizier/sed/ (will query based on coordinates authomatically if not specified, only for advanced uses)
 - deletevot: if vizier_filename is provided, whether the vot file should be deleted afterwards, True by default, boolean
 - checkpos: whether to require all photometry for a given instrument to come from the same catalog, to minimize mistaken identification of sources in crowded regions, False by default, boolean
