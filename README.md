@@ -93,33 +93,45 @@ Detailed description
 
 
 ```
-x=SEDFit(ra,dec,radius,**kwargs)
+x=SEDFit(ra,dec,radius=radius,**kwargs)
 ```
 Initializes SED fitting
 
-Required keywords:<br>
-- ra: Right Ascention of the target, can be in decimal or hexadecimal format, float or a string.<br>
-- dec: Declination of the target, can be in decimal or hexadecimal format, float or a string.<br>
-- radius: Radius in arcseconds around which to search Vizier for photometry.<br>
+Recommended keywords:<br>
+- ra: Right Ascention of the target, can be in decimal or hexadecimal format, float or a string.
+- dec: Declination of the target, can be in decimal or hexadecimal format, float or a string.
+- radius: Radius in arcseconds around which to search Vizier for photometry. (default=1 arcsec)
+
+If coordinates are not provided, initializes a generic star to compute model photometry.
 
 Optional keywords:<br>
-- grid_type: Which theoretical SEDs should be used for fitting. Options: 'kurucz' (default, Kurucz 1992), 'coelho' (Coelho 2014), 'btsettl' (Allard et al. 2011), 'phoenix' (Husser et al. 2013) <br>
-- use_gaia_params: Whether Gaia astrometry should be downloaded to estimate distances, true by default, boolean<br>
-- use_gaia_xp: Whether Gaia XP spectrum should be used or not, true by default, boolean<br>
-- gaia_params: FITS filename where Gaia astrometry is/should be saved, uses coordinates as default, string<br>
-- flux_filename: FITS filename where photometry is/should be saved, uses coordinates as default, string<br>
-- gaia_filename: FITS filename where Gaia spectrum is/should be saved, uses coordinates as default, string<br>
-- download_flux: Whether flux should be (re-)downloaded. False by default if flux_filename file already exists, boolean<br>
-- download_gaia: Whether Gaia XP spectrum should be (re-)downloaded. False by default if gaia_filename file already exists, boolean<br>
-- gaia: Whether Gaia fluxes (G, BP, RP) should be downloaded, True by default, boolean<br>
-- sdss: Whether SDSS fluxes (u,g,r,i,z) should be downloaded, True by default, boolean<br>
-- panstarrs: Whether PanSTARRS fluxes (g,r,i,z,y) should be downloaded, True by default, boolean<br>
-- johnson: Whether Johnson fluxes (U,B,V,R,I) should be downloaded, True by default, boolean<br>
-- cousins: Whether Cousins fluxes (U,B,V,R,I) should be downloaded, True by default, boolean<br>
-- tmass: Whether WISE fluxes (W1, W2, W3, W4) should be downloaded, True by default, boolean<br>
-- galex: Whether GALEX fluxes (FUV, NUV) should be downloaded, True by default, boolean<br>
+- grid_type: Which theoretical SEDs should be used for fitting. Options: 'btsettl' (default, Allard et al. 2011), 'kurucz' (Kurucz 1992), 'coelho' (Coelho 2014), 'phoenix' (Husser et al. 2013)
+- frame: reference frame for the coordinates (ICRS by default)
+- write: whether to save a fits file containing photometry after querying (default True)
+- filename: FITS filename where photometry ang Gaia metadata is/should be saved, uses coordinates as default, string
+- use_gaia_params: Whether Gaia astrometry should be downloaded to estimate distances, true by default, boolean
+- use_gaia_xp: Whether Gaia XP spectrum should be used or not, true by default, boolean
+- download_flux: Whether flux should be (re-)downloaded. False by default if flux_filename file already exists, boolean
+- download_gaia: Whether Gaia XP spectrum should be (re-)downloaded. False by default if gaia_filename file already exists, boolean
 - parallax_sigma: Range of distances that should be used in fitting based on Gaia parallax and corresponding uncertainty, default is 3 sigma.
+- nstar: How many stars to initialize, default is 1.
+- maxav: Specify maximum av along the line of sight, will query Fitzpatrick (1999) map by default.
 
+- gaia: Whether Gaia fluxes (G, BP, RP) should be downloaded, True by default, boolean
+- sdss: Whether SDSS fluxes (u,g,r,i,z) should be downloaded, True by default, boolean
+- panstarrs: Whether PanSTARRS fluxes (g,r,i,z,y) should be downloaded, True by default, boolean
+- johnson: Whether Johnson fluxes (U,B,V,R,I) should be downloaded, True by default, boolean
+- cousins: Whether Cousins fluxes (U,B,V,R,I) should be downloaded, True by default, boolean
+- tmass: Whether WISE fluxes (W1, W2, W3, W4) should be downloaded, True by default, boolean
+- galex: Whether GALEX fluxes (FUV, NUV) should be downloaded, True by default, boolean
+- wise: Whether WISE fluxes (W1, W2, W3) should be downloaded, True by default, boolean
+- spitzer: Whether Spitzer fluxes (3.6, 4.5, 5.8, 8.0, 24 micron) should be downloaded, True by default, boolean
+- xmm: Whether XMM fluxes (V, B, U, UVW1, UVM2, UVW2) should be downloaded, False by default, boolean
+  
+- vizier_filename: filename to a vot table contianing Vizier photometry queried from http://vizier.cds.unistra.fr/vizier/sed/ (will query based on coordinates authomatically if not specified, only for advanced uses)
+- deletevot: if vizier_filename is provided, whether the vot file should be deleted afterwards, True by default, boolean
+- checkpos: whether to require all photometry for a given instrument to come from the same catalog, to minimize mistaken identification of sources in crowded regions, False by default, boolean
+  
 ```
 x.addguesses()
 ```
@@ -150,7 +162,7 @@ Provides the allowed range of values that can be returned by the fitting, specif
 
 Optional parameters<br>
 - dist: Range of distances in pc, default 3 sigma Gaia parallax estimate, [0, 1e5] when not available<br>
-- av: Range of AVs in mag, default [0., los_max.], where los_max is the maximum extinction along the line of sight from Fitzpatrick (1999) map <br>
+- av: Range of AVs in mag, default [0., maxav.], where maxav is the maximum extinction along the line of sight from Fitzpatrick (1999) map, or the valua that was suplied in the initialization <br>
 - r: Range of radii in Rsun, default [0,2000.]<br>
 - teff: Range of Teff in K, default [0, 1e6]<br>
 - logg: Range of log g, default [-2,10]<br>
@@ -169,17 +181,26 @@ x.fit()
 Performs the full SED fitting, including r, teff, logg, dist, av, feh
 
 Optional parameters<br>
-- full: if True, performs a full fit that includes autonomous determination of teff, logg, and feh. Otherwise stellar parameters are passed as-is, only radii, distance, and av are fitted. True by default.
+- full: if True, performs a full fit that includes autonomous determination of teff, logg, and feh. Otherwise stellar parameters are passed as-is from the initial guesses, only radii, distance, and av are fitted. True by default.
+- fitteff: if True, includes teff in fitting, otherwise it is passed as is from the initial guesses, True by default
+- fitlogg: if True, includes logg in fitting, otherwise it is passed as is from the initial guesses, True by default
+- fitfeh: if True, includes feh in fitting, otherwise it is passed as is from the initial guesses, True by default
+- fitdist: if True, includes distance in fitting, otherwise it is passed as is from the initial guesses, True by default
+- fitav: if True, includes av in fitting, otherwise it is passed as is from the initial guesses, True by default
 - fitstar: list of stars that should be used in the fitted process, vs those the parameters of which should be passed directly from the initial guesses unaltered. 1=include, 0=exclude, e.g., [0,0,1] would preserve the parameters of the first two stars and would try to fit the residual fluxes using only the third one. System-wide parameters such as feh, av, dist would be fit in all cases. By default, fits all stars. If meshes are used, fitstar for the stars where this is the case must be set to 0.
 - use_gaia: whether to use Gaia XP spectrum in the fitting process, True by default, boolean
-- use_mag: list of indices of x.sed table that are used for fitting, as some fluxes could be of poor quality, such as due to saturation, source mismatch, or IR/UV excess. Uses all fluxes by default. E.g, in the example above, Fluxes from SDSS and Pan-STARRS i band are highly discrepant from the model. To improve the quality of the fit and to exclude them,<br> use_mag=np.where((x.sed['sed_filter']!='PAN-STARRS.PS1.i') & (x.sed['sed_filter']!='SDSS.i'))[0]
-- teffratio: If temperature ratio between secondary and primary is known, it can be specified to constrain the fit. Can only be used in fullfit.
+- idx: list of indices of x.sed table that are used for fitting, as some fluxes could be of poor quality, such as due to saturation, source mismatch, or IR/UV excess. Uses all fluxes by default. E.g, in the example above, Fluxes from SDSS and Pan-STARRS i band are highly discrepant from the model. To improve the quality of the fit and to exclude them,<br> idx=np.where((x.sed['sed_filter']!='PAN-STARRS.PS1.i') & (x.sed['sed_filter']!='SDSS.i'))[0]
+- teffratio: If temperature ratio between secondary and primary is known, it can be specified to constrain the fit.
+- teffratio1: If temperature ratio between tertiary and primary is known, it can be specified to constrain the fit (alternatively, a spot contrast ratio for the primary)
+- teffratio2: If temperature ratio between fourth star and secondary is known, it can be specified to constrain the fit (alternatively, a spot contrast ratio for the secondary)
 - teffratio_error: Weight placed on teffratio in fitting the SED, 0.01 by default.
 - radiusratio: If ratio of radii between secondary and primary is known, it can be specified to constrain the fit, float.
-- radiusratio_error: Weight placed on teffratio in fitting the SED, 0.1 by default.
+- radiusratio_error: Weight placed on radiusratio in fitting the SED, 0.1 by default.
+- radiussum: If sum of radii of primary and secondary is known, it can be specified to constrain the fit, float.
+- radiussum_error: Weight placed on radiussum in fitting the SED, 0.1 by default.
 - fluxratio: If ratio of fluxes at a given wavelength between secondary and primary is known, it can be specified to constrain the fit, float.
 - fluxratiolambda: Wavelength at which the flux ratio is determined, required for parsing fluxratio. Quantity, units of wavelength need to be specified.
-- fluxratioratio_error: Weight placed on teffratio in fitting the SED, 0.1 by default.
+- fluxratioratio_error: Weight placed on fluxratio in fitting the SED, 0.1 by default.
 
 ```
 x.makeplot()
@@ -187,6 +208,7 @@ x.makeplot()
 Produces a plot of the SED fit.
 
 Optional parameters<br>
+- idx: list of indices of fluxes that should be included inthe plot
 - file: string containing a filename (including the extension) to a file where the figure should be saved.
 - getplot: whether to return the editable matplotlib ax variable instead of displaying it. False by default.If True,
 ax=x.makeplot(getplot=False)<br>
@@ -199,7 +221,7 @@ x.getchisq()
 Calculates Chi squared of the fit.
 
 Optional parameters<br>
-- idx: list of indices of fluxes that should be used in the chisq calculation (similar format to use_mag in fullfit)
+- idx: list of indices of fluxes that should be used in the chisq calculation
 - gaia: whether to use Gaia XP spectrum in chisq calculation, boolean.
 
 ```
@@ -217,4 +239,4 @@ Other usefulf variables:<br>
 - x.flux: nested array of the raw fluxes for all of the stars provided by the model (i.e., not scaled by distance, radius, av, etc)
 - x.fx: nested array of the fitted model fluxes for all of the stars
 - x.f: array of the co-added fluxes for all of the model fitted fluxes
-- x.grid_table: list of the spectral parameters for the available synthetic models; inputs cannot be outside of their range
+- x.grid_table: list of the spectral parameters for the available synthetic models; if inputs are outside of their range, a blackbody is used instead
