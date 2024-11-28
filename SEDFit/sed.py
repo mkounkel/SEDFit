@@ -22,23 +22,23 @@ import pkg_resources
 import warnings
 import bz2
 import tarfile
+import os
+import time
 
 from astropy.utils.exceptions import AstropyWarning
 warnings.simplefilter('ignore', AstropyWarning)
+np.seterr(all="ignore")
 
 class SEDFit:
-    def __init__(self,ra=' ',dec=' ',radius=1,frame='icrs',flux_filename='',gaia_filename='',gaia_params='',parallax_sigma=3,
-                 download_flux=False,download_gaia=False,use_gaia_params=True,use_gaia_xp=True,nstar=1,**kwargs):
+    def __init__(self,ra=' ',dec=' ',radius=1,frame='icrs',filename='',write=True,vizier_filename=None,parallax_sigma=3,
+                 download_flux=False,download_gaia=False,use_gaia_params=True,use_gaia_xp=True,nstar=1,maxav=None,**kwargs):
         
         
         if (ra!=' ') & (dec!=' '):
             crd=(str(ra)+'_'+str(dec)+'_'+str(radius)).replace(':','_')
-            if flux_filename=='':
-                flux_filename=crd+'_sed.fits'
-            if gaia_filename=='':
-                gaia_filename=crd+'_gaiaxp.fits'
-            if gaia_params=='':
-                gaia_params=crd+'_gaiaparams.fits'
+            if filename=='':
+                filename=crd+'.fits'
+            self.vizier_filename = vizier_filename
             
             if (' ' in str(ra)) or (':' in str(ra)): raunit=u.hourangle
             else: raunit=u.deg
@@ -48,23 +48,29 @@ class SEDFit:
             self.dec=c.dec.value
             self.radius=radius
             self.area=False
+            update=False
             
-            self.getmaxreddening(c)
+            if maxav is None:
+                self.getmaxreddening(c)
+            else:
+                self.maxav = setmaxav
+                print('manually set max av =',setmaxav)
             
-            if (not download_flux) & (len(glob.glob(flux_filename))>0):
-                self.sed=Table.read(flux_filename)
+            if (not download_flux) & (len(glob.glob(filename))>0):
+                self.sed=Table.read(filename,hdu=1)
+                self.definefilter(new=False,**kwargs)
             else:
                 self.downloadflux(**kwargs)
                 if len(self.sed)==0:
                     print("Can't download SED for this source. Try again later - if the issue persists no star may be found at this position, or the radius is too large.")
                     return
                 else:
-                    self.sed.write(flux_filename,overwrite=True)
+                    update=True
                     
             
             if use_gaia_params:
-                if (len(glob.glob(gaia_params))>0):
-                    self.gaiaparams=Table.read(gaia_params)
+                if (len(glob.glob(filename))>0):
+                    self.gaiaparams=Table.read(filename,hdu=3)
                 else:
                     try:
                         Gaia.MAIN_GAIA_TABLE = "gaiadr3.gaia_source"
@@ -77,12 +83,12 @@ class SEDFit:
                         a=np.argsort(self.gaiaparams['dist'])
                         self.gaiaparams=self.gaiaparams[a][0:1]
                         
-                        if len(self.gaiaparams)>0:
-                            self.gaiaparams.write(gaia_params)
-                        else:
+                        if len(self.gaiaparams)==0:
                             self.gaiaparams = Table()
                             self.gaiaparams['parallax']=[np.nan]
                             print('Could not find Gaia astrometry for this source')
+                        else:
+                            update=True
                     except:
                         self.gaiaparams = Table()
                         self.gaiaparams['parallax']=[np.nan]
@@ -92,23 +98,31 @@ class SEDFit:
                 self.gaiaparams['parallax']=[np.nan]
             
             if (use_gaia_xp) & (use_gaia_params):
-                if (not download_gaia) & (len(glob.glob(gaia_filename))>0):
-                    self.gaia=Table.read(gaia_filename)
+                if (not download_gaia) & (len(glob.glob(filename))>0):
+                    self.gaia=Table.read(filename,hdu=2)
                 else:
                     try:
                         self.gaia=self.getgaia(c)
-                        self.gaia.write(gaia_filename,overwrite=True)
+                        update=True
                         print('Gaia XP spectra available')
                     except:
                         print('No Gaia XP spectra found')
-                        self.gaia=[]
+                        self.gaia=Table()
             else:
-                self.gaia=[]
+                self.gaia=Table()
+
+            if (write) & (update):
+                file=fits.HDUList()
+                file.append(fits.table_to_hdu(self.sed))
+                file.append(fits.table_to_hdu(self.gaia))
+                file.append(fits.table_to_hdu(self.gaiaparams))
+                file.update_extend()
+                file.writeto(filename,overwrite=True)
         else:
             print('Setting up a generic star')
             self.gaiaparams = Table()
             self.gaiaparams['parallax']=[np.nan]
-            self.gaia = []
+            self.gaia = Table()
             self.sed = Table()
             
             self.sed['sed_filter']=np.array(['GALEX.FUV', 'GALEX.NUV', 'Johnson.U', 'SDSS.u', 'Cousins.U', 'Cousins.B',
@@ -175,17 +189,34 @@ class SEDFit:
         return
         
         
-    def downloadflux(self,**kwargs):
+    def downloadflux(self,deletevot=True,**kwargs):
 
         target=str(self.ra)+'%20'+str(self.dec)
-        try:
-            self.sed=Table.read(f"https://vizier.cds.unistra.fr/viz-bin/sed?-c={target}&-c.rs={self.radius}")
-        except:
+
+        good=False
+        if self.vizier_filename is not None:
+            vot_fn=self.vizier_filename
+            self.sed=Table.read(vot_fn)
+            good=True
+            if deletevot:
+                os.remove(vot_fn)
+        else:
+            attempts,maxattempts=0,4
+            while attempts<maxattempts:
+                try:
+                    target=str(self.ra)+'%20'+str(self.dec)
+                    self.sed=Table.read(f"https://vizier.cds.unistra.fr/viz-bin/sed?-c={target}&-c.rs={self.radius}")
+                    good=True
+                    break
+                except:
+                    attempts += 1
+                    time.sleep(attempts**2)
+        if not good:
             self.sed=[]
             return
-            
+
         self.sed['la']=self.sed['sed_freq'].to(u.AA, equivalencies=u.spectral())
-        a=np.where((self.sed['la']<15*u.micron) & (self.sed['la']>1000*u.AA))[0]
+        a=np.where((self.sed['la']<30*u.micron) & (self.sed['la']>1000*u.AA))[0]
         self.sed=self.sed[a]
         
         self.sed["sed_flux"]=self.sed["sed_flux"].to((u.erg/u.s/(u.cm**2)/u.AA),equivalencies=u.spectral_density(self.sed['la'].data*u.AA))
@@ -201,64 +232,93 @@ class SEDFit:
         self.sed['flux'] =np.log10(self.sed["sed_flux"].value*self.sed['la'])
         
         self.definefilter(**kwargs)
+        self.sed=self.sed[['sed_filter','la','width','flux','eflux']]
+        return
+        
+    def definefilter(self,tmass=True,cousins=True,gaia=True,galex=True,johnson=True,panstarrs=True,sdss=True,wise=True,xmm=False,spitzer=True,new=True,**kwargs):
+        idx=[]
+        if new:
+            for i in range(len(self.sed)):
+                self.sed['sed_filter'][i]=self.sed['sed_filter'][i].replace(':','.').replace('/','.')
+            self.sed['width']=0*u.AA
+        if tmass:
+            if new:
+                self.sed['sed_filter']=self.sed['sed_filter'].astype(object)
+                for i in range(len(self.sed)):
+                    self.sed['sed_filter'][i]=self.sed['sed_filter'][i].replace('Johnson.J','2MASS.J')
+                    self.sed['sed_filter'][i]=self.sed['sed_filter'][i].replace('Johnson.H','2MASS.H')
+                    self.sed['sed_filter'][i]=self.sed['sed_filter'][i].replace('Johnson.K','2MASS.Ks')
+                    self.sed['sed_filter'][i]=self.sed['sed_filter'][i].replace('UKIDSS.J','2MASS.J')
+                    self.sed['sed_filter'][i]=self.sed['sed_filter'][i].replace('UKIDSS.H','2MASS.H')
+                    self.sed['sed_filter'][i]=self.sed['sed_filter'][i].replace('UKIDSS.Ks','2MASS.Ks')
+                    self.sed['sed_filter'][i]=self.sed['sed_filter'][i].replace('UKIDSS.K','2MASS.Ks')
+                    self.sed['sed_filter'][i]=self.sed['sed_filter'][i].replace('VISTA.J','2MASS.J')
+                    self.sed['sed_filter'][i]=self.sed['sed_filter'][i].replace('VISTA.H','2MASS.H')
+                    self.sed['sed_filter'][i]=self.sed['sed_filter'][i].replace('VISTA.Ks','2MASS.Ks')
+                    self.sed['sed_filter'][i]=self.sed['sed_filter'][i].replace('VISTA.K','2MASS.Ks')
+                    if self.sed['sed_filter'][i]=='2MASS:K': self.sed['sed_filter'][i]='2MASS.Ks'
+                self.sed['sed_filter']=self.sed['sed_filter'].astype(str)
+                
+            filters=['2MASS.J','2MASS.H','2MASS.Ks']
+            width=np.array([0.15,0.24,0.25])/2*u.micron
+            idx.extend(self.selectflux(filters,width,new=new))
+        if cousins:
+            filters=['Cousins.U','Cousins.B','Cousins.V','Cousins.R','Cousins.I']
+            width=np.array([0.0639,0.0928,0.0843,0.1297,0.095])/2*u.micron
+            idx.extend(self.selectflux(filters,width,new=new))
+        if gaia:
+            filters=['GAIA.GAIA3.G','GAIA.GAIA3.Gbp','GAIA.GAIA3.Grp']
+            width=np.array([0.4053,0.2158,0.2924])/2*u.micron
+            idx.extend(self.selectflux(filters,width,new=new))
+        if galex:
+            filters=['GALEX.FUV','GALEX.NUV']
+            width=np.array([0.0269,0.0616])/2*u.micron
+            idx.extend(self.selectflux(filters,width,new=new))
+        if johnson:
+            filters=['Johnson.U','Johnson.B','Johnson.V','Johnson.R','Johnson.I']
+            width=np.array([0.0619,0.0891,0.0818,0.1943,0.2176])/2*u.micron
+            idx.extend(self.selectflux(filters,width,new=new))
+        if panstarrs:
+            filters=['PAN-STARRS.PS1.g','PAN-STARRS.PS1.r','PAN-STARRS.PS1.i','PAN-STARRS.PS1.z','PAN-STARRS.PS1.y']
+            width=np.array([0.1166,0.1318,0.1243,0.09658,0.06149])/2*u.micron
+            idx.extend(self.selectflux(filters,width,new=new))
+        if sdss:
+            filters=['SDSS.u','SDSS.g','SDSS.r','SDSS.i','SDSS.z']
+            width=np.array([0.0555,0.1245,0.1262,0.1291,0.1326])/2*u.micron
+            idx.extend(self.selectflux(filters,width,new=new))
+        if wise:
+            filters=['WISE.W1','WISE.W2','WISE.W3']
+            width=np.array([0.66,1.04,5.51])/2*u.micron
+            idx.extend(self.selectflux(filters,width,new=new))
+        if xmm:
+            filters=['XMM-OT.V','XMM-OT.B','XMM-OT.U','XMM-OT.UVW1','XMM-OT.UVM2','XMM-OT.UVW2']
+            width=np.array([0.085,0.1095,0.086,0.1155,0.0705,0.0649])/2*u.micron
+            idx.extend(self.selectflux(filters,width,new=new))
+        if spitzer:
+            filters=['Spitzer.IRAC.3.6','Spitzer.IRAC.4.5','Spitzer.IRAC.5.8','Spitzer.IRAC.8.0','Spitzer.MIPS.24']
+            width=np.array([0.749,1.02,1.421,2.881,9.13])/2*u.micron
+            idx.extend(self.selectflux(filters,width,new=new))
+
+
+        self.sed=self.sed[np.array(idx).flatten()]
         a=np.argsort(self.sed['la'])
         self.sed=self.sed[a]
-        self.sed=self.sed[['sed_filter','la','width','flux','eflux']]
-        
-        
-    def definefilter(self,tmass=True,cousins=True,gaia=True,galex=True,johnson=True,panstarrs=True,sdss=True,wise=True,**kwargs):
-        idx=[]
-        self.sed['width']=0*u.AA
-        if tmass:
-            filters=['2MASS:J','2MASS:H','2MASS:Ks']
-            width=np.array([0.15,0.24,0.25])/2*u.micron
-            idx.extend(self.selectflux(filters,width))
-        if cousins:
-            filters=['Cousins:U','Cousins:B','Cousins:V','Cousins:R','Cousins:I']
-            width=np.array([0.0639,0.0928,0.0843,0.1297,0.095])/2*u.micron
-            idx.extend(self.selectflux(filters,width))
-        if gaia:
-            filters=['GAIA/GAIA3:G','GAIA/GAIA3:Gbp','GAIA/GAIA3:Grp']
-            width=np.array([0.4053,0.2158,0.2924])/2*u.micron
-            idx.extend(self.selectflux(filters,width))
-        if galex:
-            filters=['GALEX:FUV','GALEX:NUV']
-            width=np.array([0.0269,0.0616])/2*u.micron
-            idx.extend(self.selectflux(filters,width,checkpos=False))
-        if johnson:
-            filters=['Johnson:U','Johnson:B','Johnson:V','Johnson:R','Johnson:I']
-            width=np.array([0.0619,0.0891,0.0818,0.1943,0.2176])/2*u.micron
-            idx.extend(self.selectflux(filters,width))
-        if panstarrs:
-            filters=['PAN-STARRS/PS1:g','PAN-STARRS/PS1:r','PAN-STARRS/PS1:i','PAN-STARRS/PS1:z','PAN-STARRS/PS1:y']
-            width=np.array([0.1166,0.1318,0.1243,0.09658,0.06149])/2*u.micron
-            idx.extend(self.selectflux(filters,width))
-        if sdss:
-            filters=['SDSS:u','SDSS:g','SDSS:r','SDSS:i','SDSS:z']
-            width=np.array([0.0555,0.1245,0.1262,0.1291,0.1326])/2*u.micron
-            idx.extend(self.selectflux(filters,width))
-        if wise:
-            filters=['WISE:W1','WISE:W2','WISE:W3']
-            width=np.array([0.66,1.04,5.51])/2*u.micron
-            idx.extend(self.selectflux(filters,width,checkpos=False))
-            
-        self.sed=self.sed[idx]
-        for i in range(len(self.sed)):
-            self.sed['sed_filter'][i]=self.sed['sed_filter'][i].replace(':','.').replace('/','.')
         return
             
-    def selectflux(self,filters,width,checkpos=True):
+    def selectflux(self,filters,width,checkpos=False,new=True):
         idx,dist=[],[]
         for i in range(len(filters)):
             a=np.where(self.sed['sed_filter']==filters[i])[0]
-            self.sed['width'][a]=np.round(width[i].to(u.AA))
-            if len(a)>0:
-                d=np.sqrt((self.ra-self.sed['_RAJ2000'][a])**2+(self.dec-self.sed['_DEJ2000'][a])**2)
-                b=np.argmin(d)
-                idx.append(a[b])
-                dist.append(d[b])
-        idx=np.array(idx)
-        if (checkpos) & (len(dist)>0):
+            if new:
+                self.sed['width'][a]=np.round(width[i].to(u.AA))
+                if (len(a)>0):
+                    d=np.sqrt((self.ra-self.sed['_RAJ2000'][a])**2+(self.dec-self.sed['_DEJ2000'][a])**2)
+                    b=np.argmin(d)
+                    idx.append(a[b])
+                    dist.append(d[b])
+            elif (len(a)>0):
+                idx.append(a)
+        if (checkpos) & (len(dist)>0) & (new):
             b=np.min(dist)
             a=np.where(dist==b)[0]
             idx=idx[a]
@@ -285,7 +345,7 @@ class SEDFit:
         d=d[a]
         
         d['eflux']=d["eflux"]/d["flux"]/np.log(10)
-        d['flux'] =np.log10(d["flux"]*d['la'])
+        d['flux'] =np.log10(d["flux"].value*d['la'])
         return d
 
     def load_coelho_sed(self,name):
@@ -394,7 +454,7 @@ class SEDFit:
         la=np.append(la[a],l[1:])
         return spec,la,teff,logg,feh,alpha
 
-    def add_new_grid(self,grid_path='',grid_pickle='',grid_type='kurucz',loadgrid=True,laname=None,compressed=True,**kwargs):
+    def add_new_grid(self,grid_path='',grid_pickle='',grid_type='btsettl',loadgrid=True,laname=None,compressed=True,**kwargs):
         
         if grid_pickle=='':
             grid_pickle='sed_'+grid_type+'.p'
@@ -639,27 +699,43 @@ class SEDFit:
         match=np.interp(self.gaia['la'], self.la,f)
         return match
     
-    def makeplot(self,file='',getplot=False):
+    def makeplot(self,file='',idx=None,getplot=False):
+        if idx is None: idx=range(len(self.mags))
         plt.rc('font', size=24) 
-        fig = plt.figure(figsize=(12,12))
+        fig = plt.figure(figsize=(10,10))
         gs = fig.add_gridspec(2, 1, hspace=0, wspace=0,height_ratios=[3, 1])
         ax=gs.subplots(sharex='col')
         ax[0].errorbar(self.sed["la"]/1e4, self.sed["flux"],
                      yerr=self.sed["eflux"],xerr=self.sed["width"]/1e4,
-                     linestyle='',zorder=4,c='black')
+                     linestyle='',zorder=5,c='black')
         ax[0].set_xscale('log')
         ax[0].scatter(self.sed["la"]/1e4,self.mags,c='#004488',zorder=5,s=80)
-        ylims=ax[0].get_ylim()
         
         for i in range(self.nstar):
             ax[0].plot(self.la/1e4,self.fx[i],zorder=0,c='#DDAA33')
         ax[0].plot(self.la/1e4,self.f,zorder=1,c='#BB5566')
+
+        try:
+            a1=np.min(self.gaia['flux'])
+            a2=np.max(self.gaia['flux'])
+        except:
+            a1,a2=np.nan,np.nan
+        try:
+            b1=np.min(self.sed['flux'])
+            b2=np.max(self.sed['flux'])
+        except:
+            b1,b2=np.nan,np.nan
+        try:
+            c1=np.min(self.mags)
+            c2=np.max(self.mags)
+        except:
+            c1,c2=np.nan,np.nan
+        mn=np.nanmin([a1,b1])-0.5
+        if np.isnan(mn): mn=c1-0.5
+        mx=np.nanmax([a2,b2,c2])+0.5
         
-        
-        ylims1=ax[0].get_ylim()
-        
-        ax[0].set_ylim(ylims[0],ylims1[1])
-        ax[0].set_xlim(0.1,20)
+        ax[0].set_ylim(mn,mx)
+        ax[0].set_xlim(0.1,25)
         
         ax[1].scatter(self.sed["la"]/1e4,self.sed["flux"]-self.mags,zorder=1,c='#004488',s=80)
         ax[1].errorbar(self.sed["la"]/1e4, self.sed["flux"]-self.mags,
@@ -672,7 +748,7 @@ class SEDFit:
         
         ax[1].axhline(y = 0.0, color = 'r')
         ax[1].set_xscale('log')
-        ax[1].set_xlim(0.1,20)
+        ax[1].set_xlim(0.1,25)
         
         ax[1].set_xlabel('$\lambda$ ($\mu$m)')
         ax[0].set_ylabel('log $\lambda F_\lambda$ (erg s$^{-1}$ cm$^{-2}$)')
@@ -722,7 +798,7 @@ class SEDFit:
         return self.feh
     
     
-    def fit(self,use_gaia=True,use_mag=[],fitstar=[],teffratio=None,teffratio1=None,teffratio2=None,teffratio_error=None,
+    def fit(self,use_gaia=True,idx=[],fitstar=[],teffratio=None,teffratio1=None,teffratio2=None,teffratio_error=None,
                 fluxratiolambda=None,fluxratio=None,fluxratio_error=None,
                 radiusratio=None,radiusratio_error=None,radiussum=None,radiussum_error=None,full=True,fitteff=True,fitlogg=True,fitfeh=True,fitdist=True,fitav=True):
         self.full=full
@@ -745,8 +821,8 @@ class SEDFit:
             except:
                 raise Exception('Reference wavelength for the flux ratio has to have appropriate units')
         
-        if len(use_mag)==0: use_mag=range(len(self.sed))
-        self.use_mag=use_mag
+        if len(idx)==0: idx=range(len(self.sed))
+        self.use_mag=idx
         if (len(self.gaia)>0) & (use_gaia):
             flux=np.append(self.sed['flux'][self.use_mag],self.gaia['flux'])
             eflux=np.append(self.sed['eflux'][self.use_mag],self.gaia['eflux'])
