@@ -123,7 +123,7 @@ class SEDFit:
             self.gaiaparams = Table()
             self.gaiaparams['parallax']=[np.nan]
             self.gaia = Table()
-            self.sed = Table(names=('sed_filter', 'la', 'width'),dtype=("|S16",np.float32,np.float32),units=(None,u.AA,u.AA))
+            self.sed = Table(names=('index','sed_filter', 'la', 'width'),dtype=(int,"|S16",np.float32,np.float32),units=(None,None,u.AA,u.AA))
             self.definefilter(empty=True,new=False)
             self.sed['flux']=np.nan*u.erg/u.s/(u.cm**2)/u.AA
             self.sed['eflux']=np.nan*u.erg/u.s/(u.cm**2)/u.AA
@@ -212,7 +212,7 @@ class SEDFit:
         self.sed['flux'] =np.log10(self.sed["sed_flux"].value*self.sed['la'])
         
         self.definefilter(**kwargs)
-        self.sed=self.sed[['sed_filter','la','width','flux','eflux']]
+        self.sed=self.sed[['index','sed_filter','la','width','flux','eflux']]
         return
         
     def definefilter(self,tmass=True,cousins=True,gaia=True,galex=True,johnson=True,panstarrs=True,sdss=True,wise=True,xmm=True,spitzer=True,new=True,empty=False,**kwargs):
@@ -242,52 +242,62 @@ class SEDFit:
             filters=['2MASS.J','2MASS.H','2MASS.Ks']
             width=np.array([0.15,0.24,0.25])/2*u.micron
             la=np.array([12390,16500,21640])*u.AA
-            idx.extend(self.selectflux(filters,width,la,new=new,empty=empty))
+            ind=np.array([31,32,33])
+            idx.extend(self.selectflux(filters,width,la,ind,new=new,empty=empty))
         if cousins:
             filters=['Cousins.U','Cousins.B','Cousins.V','Cousins.R','Cousins.I']
             width=np.array([0.0639,0.0928,0.0843,0.1297,0.095])/2*u.micron
             la=np.array([3502,4425,5544,6469,7886])*u.AA
-            idx.extend(self.selectflux(filters,width,la,new=new,empty=empty))
+            ind=np.array([6,9,17,20,25])
+            idx.extend(self.selectflux(filters,width,la,ind,new=new,empty=empty))
         if gaia:
             filters=['GAIA.GAIA3.G','GAIA.GAIA3.Gbp','GAIA.GAIA3.Grp']
             width=np.array([0.4053,0.2158,0.2924])/2*u.micron
             la=np.array([6730,5320,7970])*u.AA
-            idx.extend(self.selectflux(filters,width,la,new=new,empty=empty))
+            ind=np.array([21,14,26])
+            idx.extend(self.selectflux(filters,width,la,ind,new=new,empty=empty))
         if galex:
             filters=['GALEX.FUV','GALEX.NUV']
             width=np.array([0.0269,0.0616])/2*u.micron
             la=np.array([1529,2312])*u.AA
-            idx.extend(self.selectflux(filters,width,la,new=new,empty=empty))
+            ind=np.array([0,3])
+            idx.extend(self.selectflux(filters,width,la,ind,new=new,empty=empty))
         if johnson:
             filters=['Johnson.U','Johnson.B','Johnson.V','Johnson.R','Johnson.I']
             width=np.array([0.0619,0.0891,0.0818,0.1943,0.2176])/2*u.micron
             la=np.array([3531,4442,5537,6938,8780])*u.AA
-            idx.extend(self.selectflux(filters,width,la,new=new,empty=empty))
+            ind=np.array([8,10,16,22,28])
+            idx.extend(self.selectflux(filters,width,la,ind,new=new,empty=empty))
         if panstarrs:
             filters=['PAN-STARRS.PS1.g','PAN-STARRS.PS1.r','PAN-STARRS.PS1.i','PAN-STARRS.PS1.z','PAN-STARRS.PS1.y']
             width=np.array([0.1166,0.1318,0.1243,0.09658,0.06149])/2*u.micron
             la=np.array([4776,6130,7485,8658,9603])*u.AA
-            idx.extend(self.selectflux(filters,width,la,new=new,empty=empty))
+            ind=np.array([12,18,23,27,30])
+            idx.extend(self.selectflux(filters,width,la,ind,new=new,empty=empty))
         if sdss:
             filters=['SDSS.u','SDSS.g','SDSS.r','SDSS.i','SDSS.z']
             width=np.array([0.0555,0.1245,0.1262,0.1291,0.1326])/2*u.micron
             la=np.array([3519,4820,6247,7635,9018])*u.AA
-            idx.extend(self.selectflux(filters,width,la,new=new,empty=empty))
+            ind=np.array([7,13,19,24,29])
+            idx.extend(self.selectflux(filters,width,la,ind,new=new,empty=empty))
         if wise:
             filters=['WISE.W1','WISE.W2','WISE.W3']
             width=np.array([0.66,1.04,5.51])/2*u.micron
             la=np.array([33500,46000,115600])*u.AA
-            idx.extend(self.selectflux(filters,width,la,new=new,empty=empty))
+            ind=np.array([34,37,40])
+            idx.extend(self.selectflux(filters,width,la,ind,new=new,empty=empty))
         if xmm:
             filters=['XMM-OT.V','XMM-OT.B','XMM-OT.U','XMM-OT.UVW1','XMM-OT.UVM2','XMM-OT.UVW2']
             width=np.array([0.085,0.1095,0.086,0.1155,0.0705,0.0649])/2*u.micron
             la=np.array([5430,4506,3441,2908,2311,2119])*u.AA
-            idx.extend(self.selectflux(filters,width,la,new=new,empty=empty))
+            ind=np.array([15,11,5,4,2,1])
+            idx.extend(self.selectflux(filters,width,la,ind,new=new,empty=empty))
         if spitzer:
             filters=['Spitzer.IRAC.3.6','Spitzer.IRAC.4.5','Spitzer.IRAC.5.8','Spitzer.IRAC.8.0','Spitzer.MIPS.24']
             width=np.array([0.749,1.02,1.421,2.881,9.13])/2*u.micron
             la=np.array([35500,44930,57310,78720,236700])*u.AA
-            idx.extend(self.selectflux(filters,width,la,new=new,empty=empty))
+            ind=np.array([35,36,38,39,41])
+            idx.extend(self.selectflux(filters,width,la,ind,new=new,empty=empty))
 
 
         self.sed=self.sed[np.array(idx).flatten()]
@@ -295,15 +305,16 @@ class SEDFit:
         self.sed=self.sed[a]
         return
             
-    def selectflux(self,filters,width,la,checkpos=False,new=True,empty=False):
+    def selectflux(self,filters,width,la,ind,checkpos=False,new=True,empty=False):
         idx,dist=[],[]
         for i in range(len(filters)):
             if empty:
-                self.sed.add_row((filters[i], la[i].to(u.AA).value, width[i].to(u.AA).value))
+                self.sed.add_row((ind[i],filters[i], la[i].to(u.AA).value, width[i].to(u.AA).value))
             a=np.where(self.sed['sed_filter']==filters[i])[0]
             if new:
                 self.sed['width'][a]=np.round(width[i].to(u.AA))
                 self.sed['la'][a]=np.round(la[i].to(u.AA))
+                self.sed['index'][a]=ind
                 if (len(a)>0):
                     d=np.sqrt((self.ra-self.sed['_RAJ2000'][a])**2+(self.dec-self.sed['_DEJ2000'][a])**2)
                     b=np.argmin(d)
