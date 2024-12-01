@@ -194,7 +194,8 @@ class SEDFit:
         if not good:
             self.sed=[]
             return
-
+        
+        self.sed['index']=int(0)
         self.sed['la']=self.sed['sed_freq'].to(u.AA, equivalencies=u.spectral())
         a=np.where((self.sed['la']<30*u.micron) & (self.sed['la']>1000*u.AA))[0]
         self.sed=self.sed[a]
@@ -314,7 +315,7 @@ class SEDFit:
             if new:
                 self.sed['width'][a]=np.round(width[i].to(u.AA))
                 self.sed['la'][a]=np.round(la[i].to(u.AA))
-                self.sed['index'][a]=ind
+                self.sed['index'][a]=ind[i]
                 if (len(a)>0):
                     d=np.sqrt((self.ra-self.sed['_RAJ2000'][a])**2+(self.dec-self.sed['_DEJ2000'][a])**2)
                     b=np.argmin(d)
