@@ -31,13 +31,16 @@ np.seterr(all="ignore")
 
 class SEDFit:
     def __init__(self,ra=' ',dec=' ',radius=1,frame='icrs',filename='',write=True,vizier_filename=None,parallax_sigma=3,
-                 download_flux=False,download_gaia=False,use_gaia_params=True,use_gaia_xp=True,nstar=1,maxav=None,**kwargs):
+                 download_flux=False,download_gaia=False,use_gaia_params=True,use_gaia_xp=True,nstar=1,maxav=None,
+                 quality_check=True,**kwargs):
         
         
         if (ra!=' ') & (dec!=' '):
             crd=(str(ra)+'_'+str(dec)+'_'+str(radius)).replace(':','_')
             if filename=='':
-                filename=crd+'.fits'
+                self.filename=crd+'.fits'
+            else:
+                self.filename=filename
             self.vizier_filename = vizier_filename
             
             if (' ' in str(ra)) or (':' in str(ra)): raunit=u.hourangle
@@ -53,11 +56,11 @@ class SEDFit:
             if maxav is None:
                 self.getmaxreddening(c)
             else:
-                self.maxav = setmaxav
-                print('manually set max av =',setmaxav)
+                self.maxav = maxav
+                print('manually set max av =',maxav)
             
-            if (not download_flux) & (len(glob.glob(filename))>0):
-                self.sed=Table.read(filename,hdu=1)
+            if (not download_flux) & (len(glob.glob(self.filename))>0):
+                self.sed=Table.read(self.filename,hdu=1)
                 self.definefilter(new=False,**kwargs)
             else:
                 self.downloadflux(**kwargs)
@@ -69,8 +72,8 @@ class SEDFit:
                     
             
             if use_gaia_params:
-                if (len(glob.glob(filename))>0):
-                    self.gaiaparams=Table.read(filename,hdu=3)
+                if (len(glob.glob(self.filename))>0):
+                    self.gaiaparams=Table.read(self.filename,hdu=3)
                 else:
                     try:
                         Gaia.MAIN_GAIA_TABLE = "gaiadr3.gaia_source"
@@ -98,8 +101,8 @@ class SEDFit:
                 self.gaiaparams['parallax']=[np.nan]
             
             if (use_gaia_xp) & (use_gaia_params):
-                if (not download_gaia) & (len(glob.glob(filename))>0):
-                    self.gaia=Table.read(filename,hdu=2)
+                if (not download_gaia) & (len(glob.glob(self.filename))>0):
+                    self.gaia=Table.read(self.filename,hdu=2)
                 else:
                     try:
                         self.gaia=self.getgaia(c)
@@ -112,12 +115,7 @@ class SEDFit:
                 self.gaia=Table()
 
             if (write) & (update):
-                file=fits.HDUList()
-                file.append(fits.table_to_hdu(self.sed))
-                file.append(fits.table_to_hdu(self.gaia))
-                file.append(fits.table_to_hdu(self.gaiaparams))
-                file.update_extend()
-                file.writeto(filename,overwrite=True)
+                self.write()
         else:
             print('Setting up a generic star')
             self.gaiaparams = Table()
@@ -129,7 +127,11 @@ class SEDFit:
             self.sed['eflux']=np.nan*u.erg/u.s/(u.cm**2)/u.AA
             self.maxav=10
             
-            
+
+        if quality_check:
+            self.set_quality()
+        else:
+            self.sed['valid'],self.sed['excess'],self.sed['bad']=1,0,0
         
         self.add_new_grid(**kwargs)
         
@@ -158,7 +160,37 @@ class SEDFit:
         print('Maximum Av along the line of sight is '+str(np.round(self.maxav,3)))
         self.addrange(dist=ed,av=[0.,self.maxav],r=[0.,2000.],teff=[0.,1e6],logg=[-2.,10.],feh=[-5.,2.])
         self.addguesses(dist=d,av=0.,r=[1.]*nstar,teff=[5000.]*nstar,logg=[4.]*nstar,feh=0.,alpha=0.,area=False)
+        return
+
+    def write(self,filename=''):
+        if filename == '':
+            filename=self.filename
+            
+        file=fits.HDUList()
+        file.append(fits.table_to_hdu(self.sed))
+        file.append(fits.table_to_hdu(self.gaia))
+        file.append(fits.table_to_hdu(self.gaiaparams))
+        file.update_extend()
+        file.writeto(filename,overwrite=True)
         
+        return
+        
+    def set_quality(self):
+        with open(pkg_resources.resource_filename('SEDFit', 'quality.p'), 'rb') as file:
+            model=pickle.load(file)
+        n=len(self.sed)
+        input=np.zeros((n,42,2))-1
+        input[:,self.sed['index'].astype(int),0]=np.tile(np.max(self.sed['flux'])-self.sed['flux'],(n,1))
+        input[:,:,1]=0
+        input[range(len(self.sed)),self.sed['index'],1]=1
+        q=np.round(model.predict(input,verbose=0),3)
+        self.sed['valid']=q[:,3]
+        self.sed['excess']=q[:,2]
+        self.sed['bad']=q[:,1]
+        a=np.where(q[:,3]>0.2)[0]
+        if len(a)/n<0.3:
+            print('Warning: large number of fluxes rejected, due to IR excess, noise, or misattribution. Manual vetting suggested')
+        return
         
     def getmaxreddening(self,coords):
         a=dustmaps.std_paths.data_dir()
@@ -704,7 +736,7 @@ class SEDFit:
         match=np.interp(self.gaia['la'], self.la,f)
         return match
     
-    def makeplot(self,file='',idx=None,getplot=False):
+    def makeplot(self,file='',idx=None,getplot=False,quality_check=True):
         if idx is None: idx=range(len(self.mags))
         plt.rc('font', size=24) 
         fig = plt.figure(figsize=(10,10))
@@ -714,8 +746,18 @@ class SEDFit:
                      yerr=self.sed["eflux"],xerr=self.sed["width"]/1e4,
                      linestyle='',zorder=5,c='black')
         ax[0].set_xscale('log')
-        ax[0].scatter(self.sed["la"]/1e4,self.mags,c='#004488',zorder=5,s=80)
-        
+
+        q=np.argmax(np.array([self.sed['valid'],self.sed['excess'],self.sed['bad']]),axis=0)
+        a=np.where(q==0)[0]
+        ax[0].scatter(self.sed["la"][a]/1e4,self.mags[a],c='#004488',zorder=6,s=80)
+        a=np.where(q==1)[0]
+        if len(a)>0:
+            ax[0].scatter(self.sed["la"][a]/1e4,self.mags[a],c='#004488',zorder=6,s=80,marker='^')
+            ax[0].scatter(self.sed["la"][a]/1e4,self.sed["flux"][a],c='#6699CC',zorder=5,s=40,marker='v')
+        a=np.where(q==2)[0]
+        if len(a)>0:
+            ax[0].scatter(self.sed["la"][a]/1e4,self.mags[a],c='#004488',zorder=6,s=80,marker='X')
+            ax[0].scatter(self.sed["la"][a]/1e4,self.sed["flux"][a],c='#6699CC',zorder=5,s=40,marker='X')
         for i in range(self.nstar):
             ax[0].plot(self.la/1e4,self.fx[i],zorder=0,c='#DDAA33')
         ax[0].plot(self.la/1e4,self.f,zorder=1,c='#BB5566')
@@ -805,7 +847,8 @@ class SEDFit:
     
     def fit(self,use_gaia=True,idx=[],fitstar=[],teffratio=None,teffratio1=None,teffratio2=None,teffratio_error=None,
                 fluxratiolambda=None,fluxratio=None,fluxratio_error=None,
-                radiusratio=None,radiusratio_error=None,radiussum=None,radiussum_error=None,full=True,fitteff=True,fitlogg=True,fitfeh=True,fitdist=True,fitav=True):
+                radiusratio=None,radiusratio_error=None,radiussum=None,radiussum_error=None,
+                full=True,fitteff=True,fitlogg=True,fitfeh=True,fitdist=True,fitav=True,quality_check=True):
         self.full=full
         self.fitteff=fitteff
         self.fitlogg=fitlogg
@@ -826,7 +869,7 @@ class SEDFit:
             except:
                 raise Exception('Reference wavelength for the flux ratio has to have appropriate units')
         
-        if len(idx)==0: idx=range(len(self.sed))
+        if len(idx)==0: idx=np.where(self.sed['valid']>0.2)[0]
         self.use_mag=idx
         if (len(self.gaia)>0) & (use_gaia):
             flux=np.append(self.sed['flux'][self.use_mag],self.gaia['flux'])
@@ -973,6 +1016,10 @@ class SEDFit:
             
             self.addguesses(dist=dist,av=av,
                             r=r)
+        if len(self.sed)>0:
+            self.sed['model']=self.mags
+        if len(self.gaia)>0:
+            self.gaia['model']=self.spec
         return pars
         
     def wrap(self,f,*argv):

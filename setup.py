@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
     
 setuptools.setup(
     name="SEDFit",
-    version="0.7.0",
+    version="1.0.0",
     author="Marina Kounkel",
     author_email="marina.kounkel@unf.edu",
     description="Performs a model SED fitting to the stellar fluxes",
@@ -18,9 +18,9 @@ setuptools.setup(
         "License :: OSI Approved :: MIT License",
         "Operating System :: OS Independent",
     ],
-    install_requires=['astropy','astroquery','numpy','scipy','dust_extinction','dustmaps','matplotlib','tqdm'],
+    install_requires=['astropy','astroquery','numpy','scipy','dust_extinction','dustmaps','matplotlib','tqdm','tensorflow>2.16'],
     package_data={
-        'SEDFit': ['sed_coelho.p','sed_kurucz.p','sed_phoenix.p','sed_btsettl.p','*.dat']
+        'SEDFit': ['sed_coelho.p','sed_kurucz.p','sed_phoenix.p','sed_btsettl.p','*.dat','quality.p']
     },
     python_requires='>=3.6',
 )
