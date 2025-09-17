@@ -129,9 +129,10 @@ class SEDFit:
             
 
         if quality_check:
-            self.set_quality()
+            self.quality=self.set_quality()
         else:
             self.sed['valid'],self.sed['excess'],self.sed['bad']=1,0,0
+            self.quality=True
         
         self.add_new_grid(**kwargs)
         
@@ -190,7 +191,8 @@ class SEDFit:
         a=np.where(q[:,3]>0.2)[0]
         if len(a)/n<0.3:
             print('Warning: large number of fluxes rejected, due to IR excess, noise, or misattribution. Manual vetting suggested')
-        return
+            return False
+        return True
         
     def getmaxreddening(self,coords):
         a=dustmaps.std_paths.data_dir()
@@ -812,7 +814,7 @@ class SEDFit:
             plt.show()
         
     def getchisq(self,idx=None,gaia=True):
-        if idx==None: idx=range(len(self.mags))
+        if idx==None: idx=np.where(self.sed['valid']>0.2)[0]
         if (gaia) & (len(self.gaia)>0):
             m=np.append(self.mags[idx],self.spec)
             r=np.append(self.sed['flux'][idx],self.gaia['flux'])
