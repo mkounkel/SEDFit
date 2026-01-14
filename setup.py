@@ -20,7 +20,7 @@ setuptools.setup(
     ],
     install_requires=['astropy','astroquery','numpy','scipy','dust_extinction','dustmaps','matplotlib','tqdm','tensorflow>2.16'],
     package_data={
-        'SEDFit': ['sed_coelho.p','sed_kurucz.p','sed_phoenix.p','sed_btsettl.p','*.dat','quality.p']
+        'SEDFit': ['sed_coelho.p','sed_kurucz.p','sed_phoenix.p','sed_btsettl.p','*.dat','quality.p','emptyflux.fits']
     },
     python_requires='>=3.6',
 )
