@@ -18,7 +18,7 @@ import numpy as np
 import glob
 import pickle
 from tqdm import tqdm
-import pkg_resources
+from importlib.resources import files, as_file
 import warnings
 import bz2
 import tarfile
@@ -177,8 +177,11 @@ class SEDFit:
         return
         
     def set_quality(self):
-        with open(pkg_resources.resource_filename('SEDFit', 'quality.p'), 'rb') as file:
-            model=pickle.load(file)
+        res = files("SEDFit").joinpath("quality.p")
+        with as_file(res) as path:
+            with open(path, "rb") as file:
+                model = pickle.load(file)
+
         n=len(self.sed)
         input=np.zeros((n,42,2))-1
         input[:,self.sed['index'].astype(int),0]=np.tile(np.max(self.sed['flux'])-self.sed['flux'],(n,1))
@@ -497,14 +500,17 @@ class SEDFit:
         
         if grid_pickle=='':
             grid_pickle='sed_'+grid_type+'.p'
-            fullpath=pkg_resources.resource_filename('SEDFit', grid_pickle)
+            res = files("SEDFit").joinpath(grid_pickle)
+            data = res.read_bytes()
+
+            
         else:
             fullpath=grid_pickle
-        if loadgrid & len(glob.glob(fullpath))>0:
+        if loadgrid:
             if compressed:
-                flux,t,la = pickle.load(bz2.BZ2File(fullpath,'rb'))
+                flux,t,la = pickle.loads(bz2.decompress(data))
             else:
-                flux,t,la = pickle.load(open(fullpath,'rb'))
+                flux,t,la = pickle.loads(data)
         else:
             path= glob.glob(grid_path)
             
@@ -729,7 +735,11 @@ class SEDFit:
         
         y=[]
         for i in range(len(self.sed)):
-            t=Table.read(pkg_resources.resource_filename('SEDFit', self.sed['sed_filter'][i]+'.dat'),format='ascii')
+            
+            name = f"{self.sed['sed_filter'][i]}.dat"
+            res = files("SEDFit").joinpath(name)
+            with as_file(res) as path:
+                t = Table.read(path, format="ascii")
             match=np.interp(t['col1']*u.AA, self.la,f/self.la)
             y.append((np.sum(match*t['col2']/np.sum(t['col2']))*self.sed['la'][i]).value)
         return np.array(y)
@@ -799,8 +809,8 @@ class SEDFit:
         ax[1].set_xscale('log')
         ax[1].set_xlim(0.1,25)
         
-        ax[1].set_xlabel('$\lambda$ ($\mu$m)')
-        ax[0].set_ylabel('log $\lambda F_\lambda$ (erg s$^{-1}$ cm$^{-2}$)')
+        ax[1].set_xlabel(r'$\lambda$ ($\mu$m)')
+        ax[0].set_ylabel(r'log $\lambda F_\lambda$ (erg s$^{-1}$ cm$^{-2}$)')
         ax[1].set_ylabel('Residuals')
         
         ax[1].xaxis.set_major_locator(ticker.FixedLocator([0.1,0.2,0.5,1,2,5,10]))
